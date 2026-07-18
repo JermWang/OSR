@@ -98,19 +98,6 @@ textarea:focus-visible {
 
 .app-surface { position: relative; isolation: isolate; min-height: 100vh; }
 
-.app-surface::before {
-  content: '';
-  position: fixed;
-  inset: 0;
-  z-index: -1;
-  pointer-events: none;
-  background-image:
-    linear-gradient(rgba(148,163,184,.035) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(148,163,184,.035) 1px, transparent 1px);
-  background-size: 52px 52px;
-  mask-image: radial-gradient(ellipse 90% 80% at 50% 30%, #000 40%, transparent 100%);
-}
-
 .gold-text {
   background: var(--gold);
   -webkit-background-clip: text;
