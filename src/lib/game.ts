@@ -196,6 +196,36 @@ export function componentMultiplier(comps: { rarity: Rarity }[]): number {
   return powered * boost;
 }
 
+/**
+ * Options for any action that costs OSR.
+ *
+ * When settlement is live the operator pays in real ERC-20 through
+ * OSRGame.execute() before the server ever applies the state change. Debiting
+ * the mirrored off-chain balance as well would charge them twice, so the route
+ * passes settledOnChain and the debit is skipped. The ledger and protocol
+ * counters still record the spend — only the balance column is left alone.
+ */
+export interface SpendOpts {
+  settledOnChain?: boolean;
+}
+
+/**
+ * Resolve how much to subtract from the mirrored balance, enforcing the
+ * affordability check only when the operator has not already paid on-chain.
+ */
+function offChainDebit(
+  user: UserRow,
+  cost: number,
+  opts: SpendOpts | undefined,
+  message: (have: string) => string
+): number {
+  if (opts?.settledOnChain) return 0;
+  if (user.osr_balance < cost) {
+    throw new GameError(message(Math.floor(user.osr_balance).toLocaleString()));
+  }
+  return cost;
+}
+
 /** Node grow-power = level multiplier x Formula D component multiplier. */
 function nodeGp(node: NodeRow, comps: ComponentRow[]): number {
   return levelMultiplier(node.level) * componentMultiplier(comps);
@@ -411,7 +441,7 @@ export function openCrate(
   wallet: string,
   crateType: 'rig_crate' | 'shaft_crate',
   targetNodeId: number | null,
-  opts?: { forceSlot?: string; forceRarity?: Rarity }
+  opts?: SpendOpts & { forceSlot?: string; forceRarity?: Rarity }
 ) {
   const db = getDb();
   const { user, nodes } = settleUser(wallet);
@@ -421,10 +451,9 @@ export function openCrate(
   if (remaining <= 0) throw new GameError('No crates remaining today — upgrade your compound for more.');
 
   const cost = getCrateCost(user.compound_level);
-  if (user.osr_balance < cost)
-    throw new GameError(
-      `Not enough OSR for crate: need ${cost.toLocaleString()} OSR (you have ${Math.floor(user.osr_balance).toLocaleString()}). Claim rewards or earn more OSR first.`
-    );
+  const debit = offChainDebit(user, cost, opts, (have) =>
+    `Not enough OSR for crate: need ${cost.toLocaleString()} OSR (you have ${have}). Claim rewards or earn more OSR first.`
+  );
 
   const family: NodeFamily = crateType === 'rig_crate' ? 'oil' : 'mine';
   const slots = NODE_SLOTS[family];
@@ -464,7 +493,7 @@ export function openCrate(
        pity_divine = ?
      WHERE wallet = ?`
   ).run(
-    cost,
+    debit,
     today,
     today,
     rigIncrement,
@@ -516,7 +545,7 @@ export function openCrate(
 // Mint / deploy node
 // ---------------------------------------------------------------------------
 
-export function mintNode(wallet: string, familyKey: string) {
+export function mintNode(wallet: string, familyKey: string, opts?: SpendOpts) {
   const db = getDb();
   const { user, nodes } = settleUser(wallet);
   const fam = NODE_FAMILIES.find((f) => f.key === familyKey);
@@ -525,17 +554,16 @@ export function mintNode(wallet: string, familyKey: string) {
   const cap = familyCap(user, fam.family);
   const owned = nodes.filter((n) => n.row.family === fam.family).length;
   if (owned >= cap) throw new GameError('Capacity full · upgrade compound to add more');
-  if (user.osr_balance < fam.burnCostOsr)
-    throw new GameError(
-      `Not enough OSR: need ${fam.burnCostOsr.toLocaleString()} OSR (you have ${Math.floor(user.osr_balance).toLocaleString()}). Claim rewards or open crates first.`
-    );
+  const debit = offChainDebit(user, fam.burnCostOsr, opts, (have) =>
+    `Not enough OSR: need ${fam.burnCostOsr.toLocaleString()} OSR (you have ${have}). Claim rewards or open crates first.`
+  );
 
   const burn = (fam.burnCostOsr * fam.burnShareBps) / 10000;
   const treasury = (fam.burnCostOsr * fam.treasuryShareBps) / 10000;
   const now = Date.now();
   db.prepare(
     'UPDATE users SET osr_balance = osr_balance - ?, welcome_started_at = COALESCE(welcome_started_at, ?) WHERE wallet = ?'
-  ).run(fam.burnCostOsr, now, wallet);
+  ).run(debit, now, wallet);
   paySplits(wallet, 'mint_node', fam.burnCostOsr, { burn, treasury }, fam.mintFeeEth, {
     familyKey,
   });
@@ -562,7 +590,12 @@ function lastClaimAt(wallet: string): number {
   return row.t ?? 0;
 }
 
-export function claimRewards(wallet: string, nodeId?: number, mode: 'claim' | 'compound' = 'claim') {
+export function claimRewards(
+  wallet: string,
+  nodeId?: number,
+  mode: 'claim' | 'compound' = 'claim',
+  opts?: SpendOpts
+) {
   const db = getDb();
   const { user, nodes } = settleUser(wallet);
   const now = Date.now();
@@ -597,7 +630,11 @@ export function claimRewards(wallet: string, nodeId?: number, mode: 'claim' | 'c
     db.prepare(
       'UPDATE nodes SET accrued = 0, accrued_updated_at = ?, last_claim_at = ? WHERE id = ?'
     ).run(now, now, n.row.id);
-    db.prepare('UPDATE users SET osr_balance = osr_balance + ? WHERE wallet = ?').run(net, wallet);
+    // A settled claim already moved real OSR out of the vault to the operator's
+    // wallet, so crediting the mirrored balance too would pay them twice.
+    // Compounding is purely internal and always credits.
+    const credit = opts?.settledOnChain && !isCompound ? 0 : net;
+    db.prepare('UPDATE users SET osr_balance = osr_balance + ? WHERE wallet = ?').run(credit, wallet);
     bumpProtocolCounter('reserve', fee);
     addLedger(wallet, isCompound ? 'compound_claim' : 'claim', net, {
       nodeId: n.row.id,
@@ -651,7 +688,7 @@ export function compoundInfo(wallet: string) {
   };
 }
 
-export function upgradeCompound(wallet: string, expedite = false) {
+export function upgradeCompound(wallet: string, expedite = false, opts?: SpendOpts) {
   const db = getDb();
   const info = compoundInfo(wallet);
   const user = getOrCreateUser(wallet);
@@ -659,15 +696,14 @@ export function upgradeCompound(wallet: string, expedite = false) {
   if (!expedite && info.cooldownRemainingMs > 0)
     throw new GameError('Compound is cooling down — expedite for 0.005 ETH or wait.');
   const { totalOsr, burnOsr, reserveOsr, treasuryOsr, targetLevel } = info.nextUpgradeCost;
-  if (user.osr_balance < totalOsr)
-    throw new GameError(
-      `Not enough OSR for compound upgrade: need ${totalOsr.toLocaleString()} OSR (you have ${Math.floor(user.osr_balance).toLocaleString()}).`
-    );
+  const debit = offChainDebit(user, totalOsr, opts, (have) =>
+    `Not enough OSR for compound upgrade: need ${totalOsr.toLocaleString()} OSR (you have ${have}).`
+  );
 
   const now = Date.now();
   db.prepare(
     'UPDATE users SET osr_balance = osr_balance - ?, compound_level = ?, compound_ready_at = ? WHERE wallet = ?'
-  ).run(totalOsr, targetLevel, now + COMPOUND_COOLDOWN_MS, wallet);
+  ).run(debit, targetLevel, now + COMPOUND_COOLDOWN_MS, wallet);
   paySplits(
     wallet,
     expedite ? 'compound_expedite' : 'compound_upgrade',
@@ -760,19 +796,18 @@ export function nodeUpgradeCost(level: number): number {
   return Math.round(250 * Math.pow(1.6, level - 1));
 }
 
-export function upgradeNode(wallet: string, nodeId: number) {
+export function upgradeNode(wallet: string, nodeId: number, opts?: SpendOpts) {
   const db = getDb();
   const { user, nodes } = settleUser(wallet);
   const node = nodes.find((n) => n.row.id === nodeId);
   if (!node) throw new GameError('Node not found', 404);
   const cost = nodeUpgradeCost(node.row.level);
-  if (user.osr_balance < cost)
-    throw new GameError(
-      `Not enough OSR to level up: need ${cost.toLocaleString()} OSR (you have ${Math.floor(user.osr_balance).toLocaleString()}).`
-    );
+  const debit = offChainDebit(user, cost, opts, (have) =>
+    `Not enough OSR to level up: need ${cost.toLocaleString()} OSR (you have ${have}).`
+  );
   const burn = Math.floor((cost * SPLIT_BURN_BPS) / 10000);
   const reserve = Math.floor((cost * SPLIT_RESERVE_BPS) / 10000);
-  db.prepare('UPDATE users SET osr_balance = osr_balance - ? WHERE wallet = ?').run(cost, wallet);
+  db.prepare('UPDATE users SET osr_balance = osr_balance - ? WHERE wallet = ?').run(debit, wallet);
   db.prepare('UPDATE nodes SET level = level + 1 WHERE id = ?').run(nodeId);
   paySplits(wallet, 'node_upgrade', cost, { burn, reserve, treasury: cost - burn - reserve }, 0, {
     nodeId,

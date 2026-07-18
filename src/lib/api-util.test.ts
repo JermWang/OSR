@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import { requireSettlementReady, requireWallet } from './api-util';
+import { requireWallet } from './api-util';
+import { settlementBlocker, requireSettlement, encodeDetail } from './settlement';
+import { decodeDetail } from './settle-route';
 
 describe('API financial guards', () => {
   it('accepts only EVM addresses and normalizes their case', () => {
@@ -11,7 +13,28 @@ describe('API financial guards', () => {
     );
   });
 
-  it('keeps mainnet mutations locked without verified settlement', () => {
-    expect(() => requireSettlementReady()).toThrow('Mainnet transactions are locked');
+  it('keeps mainnet mutations locked while settlement is unconfigured', () => {
+    // No contracts are deployed in this environment, so the gate must hold —
+    // and must name the missing piece rather than failing opaquely.
+    const blocker = settlementBlocker();
+    expect(blocker).not.toBeNull();
+    expect(blocker).toMatch(/not deployed|not configured/);
+    expect(() => requireSettlement()).toThrow(/Mainnet transactions are locked/);
+  });
+});
+
+describe('settlement detail payload', () => {
+  it('round-trips the action parameters that bind a receipt to its quote', () => {
+    for (const value of ['oil_rig', 'mine_shaft', 'rig_crate:42', 'L7', 'expedite']) {
+      expect(decodeDetail(encodeDetail(value))).toBe(value);
+    }
+  });
+
+  it('produces a fixed 32-byte payload', () => {
+    expect(encodeDetail('oil_rig')).toHaveLength(66); // 0x + 64 hex chars
+  });
+
+  it('rejects a payload that would not fit on-chain', () => {
+    expect(() => encodeDetail('x'.repeat(33))).toThrow(/too long/);
   });
 });

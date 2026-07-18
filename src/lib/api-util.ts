@@ -36,10 +36,6 @@ export async function requireAuthenticatedWallet(request: Request, value: unknow
   return wallet;
 }
 
-/** Mainnet writes stay locked until audited contracts and receipt verification ship. */
-export function requireSettlementReady(): never {
-  throw new GameError(
-    'Mainnet transactions are locked until the audited OSR contracts and receipt verifier are deployed',
-    503
-  );
-}
+// Mainnet write gating now lives in settlement.ts: requireSettlement() blocks
+// only while the contracts or signer are genuinely unconfigured, and reports
+// which one is missing, rather than being an unconditional stub.

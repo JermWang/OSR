@@ -99,9 +99,35 @@ function migrate(db: DatabaseSync) {
       PRIMARY KEY (wallet, action, request_key)
     );
 
+    -- On-chain settlement records. One row per issued action voucher. The
+    -- nonce is the primary key and is also emitted in the OSRGame
+    -- ActionExecuted event, which is what binds a mined transaction back to
+    -- the exact quote the server signed. status walks issued -> settled; a
+    -- settled row can never be applied twice.
+    CREATE TABLE IF NOT EXISTS settlements (
+      nonce TEXT PRIMARY KEY,
+      wallet TEXT NOT NULL,
+      action TEXT NOT NULL,
+      detail TEXT NOT NULL,
+      osr_amount TEXT NOT NULL,
+      fee_wei TEXT NOT NULL,
+      burn_bps INTEGER NOT NULL,
+      treasury_bps INTEGER NOT NULL,
+      deadline INTEGER NOT NULL,
+      status TEXT NOT NULL DEFAULT 'issued',
+      tx_hash TEXT,
+      applied_result TEXT,
+      created_at INTEGER NOT NULL,
+      settled_at INTEGER
+    );
+
     CREATE INDEX IF NOT EXISTS idx_nodes_wallet ON nodes(wallet);
     CREATE INDEX IF NOT EXISTS idx_components_wallet ON components(wallet);
     CREATE INDEX IF NOT EXISTS idx_ledger_wallet ON ledger(wallet, created_at);
+    CREATE INDEX IF NOT EXISTS idx_settlements_wallet ON settlements(wallet, created_at);
+    -- A mined transaction may only ever back one settlement.
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_settlements_tx ON settlements(tx_hash)
+      WHERE tx_hash IS NOT NULL;
   `);
 
   // These counters were split after the initial local schema shipped. Keep the
