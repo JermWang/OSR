@@ -1,8 +1,8 @@
 import { handle } from '@/lib/api-util';
-import { reservesView } from '@/lib/game';
+import { onchainReserves } from '@/lib/onchain';
 
 export const dynamic = 'force-dynamic';
 
 export async function GET() {
-  return handle(() => reservesView());
+  return handle(() => onchainReserves());
 }

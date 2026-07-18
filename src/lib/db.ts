@@ -78,10 +78,31 @@ function migrate(db: DatabaseSync) {
       value TEXT NOT NULL
     );
 
+    CREATE TABLE IF NOT EXISTS idempotency (
+      wallet TEXT NOT NULL,
+      action TEXT NOT NULL,
+      request_key TEXT NOT NULL,
+      response TEXT NOT NULL,
+      created_at INTEGER NOT NULL,
+      PRIMARY KEY (wallet, action, request_key)
+    );
+
     CREATE INDEX IF NOT EXISTS idx_nodes_wallet ON nodes(wallet);
     CREATE INDEX IF NOT EXISTS idx_components_wallet ON components(wallet);
     CREATE INDEX IF NOT EXISTS idx_ledger_wallet ON ledger(wallet, created_at);
   `);
+
+  // These counters were split after the initial local schema shipped. Keep the
+  // migration additive so existing development databases continue to work.
+  ensureColumn(db, 'users', 'rig_crates_opened_today', 'INTEGER NOT NULL DEFAULT 0');
+  ensureColumn(db, 'users', 'shaft_crates_opened_today', 'INTEGER NOT NULL DEFAULT 0');
+}
+
+function ensureColumn(db: DatabaseSync, table: string, column: string, definition: string) {
+  const columns = db.prepare(`PRAGMA table_info(${table})`).all() as Array<{ name: string }>;
+  if (!columns.some((item) => item.name === column)) {
+    db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`);
+  }
 }
 
 export function getProtocolValue(key: string): string | null {
@@ -97,4 +118,48 @@ export function setProtocolValue(key: string, value: string) {
       'INSERT INTO protocol (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value'
     )
     .run(key, value);
+}
+
+/** Execute a synchronous game mutation once and replay its saved response on retry. */
+export function runIdempotent<T>(
+  wallet: string,
+  action: string,
+  requestKey: unknown,
+  mutation: () => T
+): T {
+  // Preserve compatibility with older clients while current clients always
+  // send a key. Invalid keys deliberately do not get persisted.
+  if (typeof requestKey !== 'string' || requestKey.length < 8 || requestKey.length > 128) {
+    return mutation();
+  }
+
+  const database = getDb();
+  const read = () =>
+    database
+      .prepare(
+        'SELECT response FROM idempotency WHERE wallet = ? AND action = ? AND request_key = ?'
+      )
+      .get(wallet, action, requestKey) as { response: string } | undefined;
+  const cached = read();
+  if (cached) return JSON.parse(cached.response) as T;
+
+  database.exec('BEGIN IMMEDIATE');
+  try {
+    const raced = read();
+    if (raced) {
+      database.exec('COMMIT');
+      return JSON.parse(raced.response) as T;
+    }
+    const result = mutation();
+    database
+      .prepare(
+        'INSERT INTO idempotency (wallet, action, request_key, response, created_at) VALUES (?,?,?,?,?)'
+      )
+      .run(wallet, action, requestKey, JSON.stringify(result), Date.now());
+    database.exec('COMMIT');
+    return result;
+  } catch (error) {
+    database.exec('ROLLBACK');
+    throw error;
+  }
 }

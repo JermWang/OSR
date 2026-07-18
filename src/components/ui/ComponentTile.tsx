@@ -1,8 +1,6 @@
 'use client';
 
-// Styled 2D stand-in for the original runtime-captured WebGL component sprites.
-// Kept as a single clean component so a 3D capture pipeline can swap in later
-// without touching the pages that render tiles.
+// Uses the isolated previews rendered from the authored Blender slot models.
 
 import { rarityHex, type Rarity } from '@/lib/rarity';
 
@@ -17,6 +15,10 @@ export const SLOT_GLYPHS: Record<string, string> = {
   elevator: '↕',
 };
 
+export const SLOT_IMAGES: Record<string, string> = Object.fromEntries(
+  Object.keys(SLOT_GLYPHS).map((slot) => [slot, `/models/authored/previews/${slot}.png`])
+);
+
 interface ComponentTileProps {
   slot: string;
   rarity: Rarity;
@@ -25,10 +27,12 @@ interface ComponentTileProps {
 
 export default function ComponentTile({ slot, rarity, size = 86 }: ComponentTileProps) {
   const hex = rarityHex(rarity);
+  const image = SLOT_IMAGES[slot];
+
   return (
     <div
       aria-hidden
-      className="flex select-none items-center justify-center rounded-md"
+      className="relative flex select-none items-center justify-center overflow-hidden rounded-md"
       style={{
         width: size,
         height: size,
@@ -39,9 +43,23 @@ export default function ComponentTile({ slot, rarity, size = 86 }: ComponentTile
         lineHeight: 1,
       }}
     >
-      <span style={{ filter: `drop-shadow(0 0 ${Math.round(size * 0.08)}px ${hex}aa)` }}>
-        {SLOT_GLYPHS[slot] ?? '·'}
-      </span>
+      {image ? (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img
+          src={image}
+          alt=""
+          style={{
+            width: '92%',
+            height: '92%',
+            objectFit: 'contain',
+            filter: `drop-shadow(0 0 ${Math.round(size * 0.08)}px ${hex}aa)`,
+          }}
+        />
+      ) : (
+        <span style={{ filter: `drop-shadow(0 0 ${Math.round(size * 0.08)}px ${hex}aa)` }}>
+          {SLOT_GLYPHS[slot] ?? '·'}
+        </span>
+      )}
     </div>
   );
 }

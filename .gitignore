@@ -3,9 +3,11 @@ node_modules/
 .next/
 out/
 *.tsbuildinfo
+.codex-*.log
 
 # local data
 data/
+supabase/.temp/
 *.db
 *.db-journal
 .env*.local

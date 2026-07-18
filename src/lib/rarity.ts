@@ -84,14 +84,6 @@ export function rarityHex(r: Rarity): string {
   return `#${COMPONENT_RARITIES[r].tint.toString(16).padStart(6, '0')}`;
 }
 
-export function modelPath(family: NodeFamily, slot: string, rarity: Rarity): string {
-  return `/models/${family}/${slot}/${slot}_${rarity}.glb`;
-}
-
-export function basePath(family: NodeFamily): string {
-  return `/models/${family}/base.glb`;
-}
-
 export function cratePath(rarity: Rarity): string {
   return `/models/crates/crate_${rarity}.glb`;
 }

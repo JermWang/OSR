@@ -10,7 +10,9 @@ import { useWalletStore } from '@/lib/store';
 import NavBar from '@/components/ui/NavBar';
 import { COMPONENT_RARITIES, NODE_SLOTS, SLOT_LABELS, type Rarity } from '@/lib/rarity';
 import { RARITY_MULT, getCrateCost, WELCOME_BOOST_WINDOW_S } from '@/lib/economy';
-import type { LightingPreset } from '@/components/three/Compound';
+import { SHOWROOM_NODES, type LightingPreset } from '@/components/three/Compound';
+import type { RigNodeData } from '@/components/three/NodeRig';
+import { CHAIN, ONCHAIN_ENABLED } from '@/lib/config';
 
 const Scene = dynamic(() => import('@/components/three/Scene'), { ssr: false });
 const CrateCinematic = dynamic(() => import('@/components/three/CrateCinematic'), { ssr: false });
@@ -49,6 +51,7 @@ export default function CommandPage() {
   const [crateOpen, setCrateOpen] = useState(false);
   const [crateResult, setCrateResult] = useState<CrateResult | null>(null);
   const [lastCrateType, setLastCrateType] = useState<'rig_crate' | 'shaft_crate'>('rig_crate');
+  const [cameraFocusId, setCameraFocusId] = useState<string | null>(null);
 
   useEffect(() => {
     const stored = localStorage.getItem('osr:lighting-preset') as LightingPreset | null;
@@ -65,7 +68,58 @@ export default function CommandPage() {
   }, []);
 
   const nodes = useMemo(() => op?.nodes ?? [], [op]);
+  const oilCount = nodes.filter((node) => node.type === 'oil').length;
+  const mineCount = nodes.filter((node) => node.type === 'mine').length;
+  const oilCapacity = op?.maxNodes ?? 2;
+  const mineCapacity = oilCapacity + (op?.shaftBonusSlots ?? 0);
+  const totalCapacity = oilCapacity + mineCapacity;
+  const capacityFull = oilCount >= oilCapacity && mineCount >= mineCapacity;
   const selected = nodes.find((n) => n.id === selectedNodeId) ?? null;
+  const sceneNodes = useMemo(() => {
+    const visible: RigNodeData[] = nodes.map((node) => ({
+      id: node.id,
+      type: node.type,
+      level: node.level,
+      isActive: node.isActive,
+      components: node.components,
+    }));
+    if (!visible.some((node) => node.type === 'oil')) visible.push(SHOWROOM_NODES[0]);
+    if (!visible.some((node) => node.type === 'mine')) visible.push(SHOWROOM_NODES[1]);
+    return visible;
+  }, [nodes]);
+  const focusedRig = sceneNodes.find((node) => node.id === cameraFocusId) ?? null;
+
+  const cycleCameraFocus = useCallback(
+    (direction: -1 | 1) => {
+      setCameraFocusId((current) => {
+        if (sceneNodes.length === 0) return null;
+        const currentIndex = current ? sceneNodes.findIndex((node) => node.id === current) : -1;
+        if (currentIndex < 0) return sceneNodes[direction > 0 ? 0 : sceneNodes.length - 1].id;
+        return sceneNodes[(currentIndex + direction + sceneNodes.length) % sceneNodes.length].id;
+      });
+    },
+    [sceneNodes]
+  );
+
+  useEffect(() => {
+    if (selectedNodeId) setCameraFocusId(selectedNodeId);
+  }, [selectedNodeId]);
+
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      const target = event.target as HTMLElement | null;
+      if (target?.matches('input, textarea, select, [contenteditable="true"]')) return;
+      if (event.key === 'ArrowLeft') {
+        event.preventDefault();
+        cycleCameraFocus(-1);
+      } else if (event.key === 'ArrowRight') {
+        event.preventDefault();
+        cycleCameraFocus(1);
+      }
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [cycleCameraFocus]);
   const pendingTotal = Object.values(op?.pending ?? {}).reduce((a, b) => a + b, 0);
   const dailyOsr = (op?.productionRate ?? 0) * 86400;
   const networkShare =
@@ -76,6 +130,9 @@ export default function CommandPage() {
   const run = useCallback(
     async (label: string, fn: () => Promise<unknown>, success?: string) => {
       if (!wallet) return say('Connect your wallet first');
+      if (!ONCHAIN_ENABLED) {
+        return say('Transactions are locked until the audited OSR contracts are deployed');
+      }
       setBusy(label);
       try {
         await fn();
@@ -114,11 +171,12 @@ export default function CommandPage() {
         <div className="mb-4"><NavBar /></div>
         <div className="panel flex flex-col items-center gap-3 p-10 text-center">
           <div className="font-mono text-sm uppercase tracking-widest text-amber-500">
-            Connect your wallet to begin
+            Sign in to create your OSR wallet
           </div>
           <p className="text-sm text-steel-400">
-            Use the wallet button in the top bar to connect Phantom, Solflare, or Backpack — or
-            play instantly as a guest.
+            Sign in with email or Google to create a Privy embedded hot wallet, or link MetaMask,
+            Rabby, or Robinhood Wallet on {CHAIN.name}. Every transaction stays tied to your
+            authenticated account.
           </p>
         </div>
       </div>
@@ -130,6 +188,13 @@ export default function CommandPage() {
       {/* Sidebar */}
       <aside className="flex w-full flex-col gap-3 overflow-y-auto border-r border-ink-600 p-3 md:w-[360px]">
         <NavBar />
+
+        {!ONCHAIN_ENABLED && (
+          <div className="rounded border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs leading-relaxed text-amber-200">
+            Real wallet mode is active on {CHAIN.name}. Financial actions stay locked until the
+            audited OSR token and game/vault contracts are deployed and configured.
+          </div>
+        )}
 
         {error && (
           <div className="rounded border border-red-500/40 bg-red-500/10 px-3 py-2 text-xs text-red-400">
@@ -149,7 +214,10 @@ export default function CommandPage() {
             <div className="text-right">
               <div className="stat-label">Capacity</div>
               <div className="text-sm text-steel-300">
-                {op?.maxNodes ?? 2} nodes · {op?.compound.cratesPerDay ?? 3} crates
+                {oilCount}/{oilCapacity} rigs · {mineCount}/{mineCapacity} shafts
+              </div>
+              <div className="mt-0.5 text-[10px] text-steel-500">
+                {op?.compound.cratesPerDay ?? 3} crates per family / day
               </div>
             </div>
           </div>
@@ -221,7 +289,7 @@ export default function CommandPage() {
           <div className="mb-2 flex items-center justify-between">
             <div className="stat-label">Your Nodes</div>
             <span className="font-mono text-[11px] text-steel-400">
-              {nodes.length} / {op?.maxNodes ?? 2}
+              {nodes.length} / {totalCapacity}
             </span>
           </div>
           {nodes.length === 0 && (
@@ -249,11 +317,11 @@ export default function CommandPage() {
           <div className="mt-3 grid grid-cols-2 gap-2">
             <button
               className="btn-primary"
-              disabled={nodes.length >= (op?.maxNodes ?? 2) + (op?.shaftBonusSlots ?? 0)}
+              disabled={capacityFull}
               onClick={() => setDeployOpen(true)}
-              title={nodes.length >= (op?.maxNodes ?? 2) ? 'Capacity full · upgrade compound to add more' : undefined}
+              title={capacityFull ? 'Both family capacities are full · upgrade compound to add more' : undefined}
             >
-              Deploy Node {nodes.length}/{(op?.maxNodes ?? 2) + (op?.shaftBonusSlots ?? 0)}
+              Deploy Node {nodes.length}/{totalCapacity}
             </button>
             <button className="btn-secondary" onClick={() => setCrateOpen(true)}>
               Open Crate
@@ -277,18 +345,52 @@ export default function CommandPage() {
       {/* 3D scene */}
       <div className="relative min-h-[360px] flex-1">
         <Scene
-          nodes={nodes.map((n) => ({
-            id: n.id,
-            type: n.type,
-            level: n.level,
-            isActive: n.isActive,
-            components: n.components,
-          }))}
+          nodes={sceneNodes}
           preset={preset}
           selectedNodeId={selectedNodeId}
-          onSelect={(id) => selectNode(id || null)}
-          maxLevel={op?.level ?? 1}
+          focusNodeId={cameraFocusId}
+          onSelect={(id) => {
+            selectNode(id || null);
+            setCameraFocusId(id || null);
+          }}
         />
+        <div className="absolute bottom-4 left-1/2 z-10 flex -translate-x-1/2 items-center gap-1 rounded-full border border-ink-500/80 bg-ink-900/90 p-1 shadow-2xl backdrop-blur">
+          <button
+            className="rounded-full px-3 py-2 font-mono text-lg text-steel-200 transition hover:bg-amber-500/20 hover:text-amber-300"
+            onClick={() => cycleCameraFocus(-1)}
+            aria-label="Focus previous rig"
+            title="Previous rig (Left Arrow)"
+          >
+            ←
+          </button>
+          <button
+            className="min-w-36 rounded-full px-3 py-2 text-center font-mono text-[10px] font-bold uppercase tracking-widest text-amber-400 transition hover:bg-ink-700"
+            onClick={() => setCameraFocusId(null)}
+            title="Return to compound overview"
+          >
+            {focusedRig
+              ? `${focusedRig.type === 'oil' ? 'Oil Rig' : 'Mining Shaft'}${focusedRig.id.startsWith('showroom-') ? ' · Preview' : ''}`
+              : 'Compound Overview'}
+          </button>
+          <button
+            className="rounded-full px-3 py-2 font-mono text-lg text-steel-200 transition hover:bg-amber-500/20 hover:text-amber-300"
+            onClick={() => cycleCameraFocus(1)}
+            aria-label="Focus next rig"
+            title="Next rig (Right Arrow)"
+          >
+            →
+          </button>
+        </div>
+        {(oilCount === 0 || mineCount === 0) && (
+          <div className="pointer-events-none absolute left-3 top-3 max-w-[280px] rounded border border-amber-500/40 bg-ink-900/85 px-3 py-2 backdrop-blur">
+            <div className="font-mono text-[10px] font-bold uppercase tracking-widest text-amber-400">
+              Model showroom · preview only
+            </div>
+            <div className="mt-1 text-[11px] text-steel-300">
+              Missing node families use your original full Blender models · preview only
+            </div>
+          </div>
+        )}
         {/* Lighting selector */}
         <div className="absolute right-3 top-3 flex gap-1 rounded border border-ink-600 bg-ink-900/80 p-1 backdrop-blur">
           {(
@@ -316,6 +418,8 @@ export default function CommandPage() {
         <DeployModal
           onClose={() => setDeployOpen(false)}
           busy={busy}
+          counts={{ oil: oilCount, mine: mineCount }}
+          capacities={{ oil: oilCapacity, mine: mineCapacity }}
           onDeploy={(familyKey) =>
             run('mint', async () => {
               await api.mintNode(wallet!, familyKey);
@@ -375,7 +479,7 @@ function CompoundPanel({
         <>
           <div className="text-sm text-steel-300">
             {next.totalOsr.toLocaleString()} OSR
-            <span className="text-[11px] text-steel-500"> · 50/30/20 burn/reserve/treasury · +0.001 SOL</span>
+            <span className="text-[11px] text-steel-500"> · 50/30/20 burn/reserve/treasury · +0.00001 ETH</span>
           </div>
           {cooling && (
             <div className="mt-1 text-[11px] text-amber-500">
@@ -397,16 +501,16 @@ function CompoundPanel({
             {cooling && (
               <button
                 className="btn-secondary"
-                title="Pay 1 SOL to skip the cooldown and upgrade now"
+                title="Pay 0.005 ETH to skip the cooldown and upgrade now"
                 disabled={busy === 'expedite'}
                 onClick={() => {
-                  if (confirm('Skip cooldown for 1 SOL (~$170)?'))
+                  if (confirm('Skip cooldown for 0.005 ETH?'))
                     run('expedite', async () => {
                       await api.expediteCompound(wallet!);
                     }, 'Compound expedited!');
                 }}
               >
-                Skip Cooldown (1 SOL)
+                Skip Cooldown (0.005 ETH)
               </button>
             )}
           </div>
@@ -524,44 +628,98 @@ function DeployModal({
   onClose,
   onDeploy,
   busy,
+  counts,
+  capacities,
 }: {
   onClose: () => void;
   onDeploy: (familyKey: string) => void;
   busy: string | null;
+  counts: Record<'oil' | 'mine', number>;
+  capacities: Record<'oil' | 'mine', number>;
 }) {
   const [families, setFamilies] = useState<Awaited<ReturnType<typeof api.families>> | null>(null);
   const [sel, setSel] = useState<string>('oil_rig');
-  useEffect(() => {
-    api.families().then(setFamilies).catch(() => setFamilies(null));
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const loadFamilies = useCallback(async () => {
+    setFamilies(null);
+    setLoadError(null);
+    try {
+      setFamilies(await api.families());
+    } catch (error) {
+      setLoadError(error instanceof Error ? error.message : 'Could not load node families');
+    }
   }, []);
+  useEffect(() => {
+    void loadFamilies();
+  }, [loadFamilies]);
+  useEffect(() => {
+    if (!families) return;
+    const selected = families.find((family) => family.key === sel);
+    if (selected && counts[selected.family] >= capacities[selected.family]) {
+      const available = families.find(
+        (family) => counts[family.family] < capacities[family.family]
+      );
+      if (available) setSel(available.key);
+    }
+  }, [families, sel, counts, capacities]);
+
+  const selectedFamily = families?.find((family) => family.key === sel);
+  const selectedFull = selectedFamily
+    ? counts[selectedFamily.family] >= capacities[selectedFamily.family]
+    : true;
+
   return (
     <Modal onClose={onClose} title="Deploy Node">
       <div className="flex flex-col gap-2">
-        {(families ?? []).map((f) => (
-          <button
-            key={f.key}
-            onClick={() => setSel(f.key)}
-            className={`rounded border p-3 text-left transition ${
-              sel === f.key ? 'border-amber-500 bg-amber-500/10' : 'border-ink-600 bg-ink-800 hover:border-steel-500'
-            }`}
-          >
+        {(families ?? []).map((f) => {
+          const full = counts[f.family] >= capacities[f.family];
+          return (
+            <button
+              key={f.key}
+              disabled={full}
+              onClick={() => setSel(f.key)}
+              className={`rounded border p-3 text-left transition disabled:cursor-not-allowed disabled:opacity-50 ${
+                sel === f.key ? 'border-amber-500 bg-amber-500/10' : 'border-ink-600 bg-ink-800 hover:border-steel-500'
+              }`}
+            >
             <div className="flex items-center gap-2">
-              <span className="text-xl">{f.family === 'oil' ? '⛽' : '⛏'}</span>
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src={f.family === 'oil' ? '/oil rig.png' : '/mining shaft.png'}
+                alt=""
+                className="h-12 w-12 rounded object-cover"
+              />
               <span className="font-semibold text-white">{f.name}</span>
               <span className="ml-auto font-mono text-sm text-amber-400">
                 {f.burnCostOsr.toLocaleString()} OSR
               </span>
             </div>
+            <div className="mt-1 font-mono text-[10px] uppercase tracking-widest text-steel-500">
+              Capacity {counts[f.family]}/{capacities[f.family]}{full ? ' · full' : ''}
+            </div>
             <p className="mt-1 text-xs text-steel-400">{f.description}</p>
             <div className="mt-2 grid grid-cols-3 gap-1 text-[10px] text-steel-500">
               <span>→ burned {(f.burnCostOsr * f.burnShareBps) / 10000}</span>
               <span>→ treasury {(f.burnCostOsr * f.treasuryShareBps) / 10000}</span>
-              <span>+ {(f.solMintFeeLamports / 1e9).toFixed(2)} SOL fee</span>
+              <span>+ {f.mintFeeEth} ETH fee</span>
             </div>
-          </button>
-        ))}
-        {!families && <div className="text-sm text-steel-400">Loading families…</div>}
-        <button className="btn-primary mt-2" disabled={busy === 'mint'} onClick={() => onDeploy(sel)}>
+            </button>
+          );
+        })}
+        {!families && !loadError && <div className="text-sm text-steel-400">Loading families…</div>}
+        {loadError && (
+          <div className="rounded border border-red-500/40 bg-red-500/10 p-3 text-sm text-red-400">
+            <p>{loadError}</p>
+            <button className="btn-secondary mt-2 text-xs" onClick={() => void loadFamilies()}>
+              Retry
+            </button>
+          </div>
+        )}
+        <button
+          className="btn-primary mt-2"
+          disabled={busy === 'mint' || selectedFull || !families}
+          onClick={() => onDeploy(sel)}
+        >
           {busy === 'mint' ? 'Igniting…' : 'Deploy · Starting level L1'}
         </button>
       </div>
@@ -655,7 +813,8 @@ function CrateCard({
     <div
       className={`rounded border p-3 ${tone === 'amber' ? 'border-amber-500/40 bg-amber-500/5' : 'border-steel-500/40 bg-steel-500/5'}`}
     >
-      <div className="text-2xl">{tone === 'amber' ? '🛢️' : '⚒️'}</div>
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img src="/mining shaft crate.png" alt="" className="h-14 w-14 rounded object-cover" />
       <div className="mt-1 font-semibold text-white">{title}</div>
       <div className="text-[11px] text-steel-400">
         {remaining}/{perDay} remaining today

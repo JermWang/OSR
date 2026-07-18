@@ -3,12 +3,15 @@
 import { useCallback, useEffect, useState } from 'react';
 import PageShell from '@/components/ui/PageShell';
 import { api } from '@/lib/api-client';
+import { getBrowserSupabase } from '@/lib/supabase-browser';
 
 type Metric = 'compound_level' | 'total_produced' | 'total_burned';
 
 interface Row {
   rank: number;
   wallet: string;
+  displayName?: string | null;
+  online?: boolean;
   compoundLevel?: number;
   maxLevel: number;
   sumLevel: number;
@@ -50,6 +53,25 @@ export default function LeaderboardPage() {
 
   useEffect(() => {
     void load(metric);
+  }, [metric, load]);
+
+  useEffect(() => {
+    const supabase = getBrowserSupabase();
+    if (!supabase) {
+      const timer = window.setInterval(() => void load(metric), 30_000);
+      return () => window.clearInterval(timer);
+    }
+    const channel = supabase
+      .channel('osr-global-leaderboard')
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'profiles' },
+        () => void load(metric)
+      )
+      .subscribe();
+    return () => {
+      void supabase.removeChannel(channel);
+    };
   }, [metric, load]);
 
   const podium = rows.slice(0, 3);

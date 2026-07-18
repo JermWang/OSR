@@ -3,7 +3,6 @@
 // read "settles" a node's accrued OSR up to now, so no background ticker is
 // needed.
 
-import { randomUUID } from 'crypto';
 import { getDb, getProtocolValue, setProtocolValue } from './db';
 import {
   RARITY_MULT,
@@ -31,13 +30,15 @@ import {
   SHARE_CAP,
   STORAGE_CAP_SECONDS,
   COMPOUND_COOLDOWN_MS,
-  COMPOUND_SOL_FEE,
+  COMPOUND_FEE_ETH,
+  CRATE_FEE_ETH,
+  EXPEDITE_FEE_ETH,
   XSTOCK_MIN_COMPOUND_LEVEL,
   XSTOCK_ACCRUAL_RATE,
-  STARTER_OSR,
   TOTAL_SUPPLY,
 } from './economy';
 import { NODE_SLOTS, RARITIES, type NodeFamily, type Rarity } from './rarity';
+import { CONTRACTS_CONFIGURED } from './config';
 
 export class GameError extends Error {
   status: number;
@@ -81,12 +82,12 @@ export function protocolCounters() {
   };
 }
 
-function paySplits(wallet: string, kind: string, osr: number, splits: { burn: number; reserve?: number; treasury: number }, solLamports = 0, meta?: object) {
+function paySplits(wallet: string, kind: string, osr: number, splits: { burn: number; reserve?: number; treasury: number }, feeEth = 0, meta?: object) {
   bumpProtocolCounter('burned', splits.burn);
   if (splits.reserve) bumpProtocolCounter('reserve', splits.reserve);
   bumpProtocolCounter('treasury', splits.treasury);
-  if (solLamports > 0) bumpProtocolCounter('solRevenue', solLamports / 1e9);
-  addLedger(wallet, kind, -osr, { ...meta, ...splits, solLamports });
+  if (feeEth > 0) bumpProtocolCounter('solRevenue', feeEth);
+  addLedger(wallet, kind, -osr, { ...meta, ...splits, feeEth });
 }
 
 // ---------------------------------------------------------------------------
@@ -105,6 +106,8 @@ export interface UserRow {
   compound_ready_at: number | null;
   last_crate_at: number | null;
   crates_opened_today: number;
+  rig_crates_opened_today: number;
+  shaft_crates_opened_today: number;
   crates_day: number;
   pity_legendary: number;
   pity_mythic: number;
@@ -120,12 +123,9 @@ export function getOrCreateUser(wallet: string): UserRow {
   let user = db.prepare('SELECT * FROM users WHERE wallet = ?').get(wallet) as unknown as UserRow | undefined;
   if (!user) {
     const now = Date.now();
-    const ins = db
-      .prepare(
-        'INSERT OR IGNORE INTO users (wallet, osr_balance, created_at, last_seen, dripped) VALUES (?,?,?,?,1)'
-      )
-      .run(wallet, STARTER_OSR, now, now);
-    if (ins.changes > 0) addLedger(wallet, 'drip', STARTER_OSR, { reason: 'starter' });
+    db.prepare(
+      'INSERT OR IGNORE INTO users (wallet, osr_balance, created_at, last_seen, dripped) VALUES (?,?,?,?,0)'
+    ).run(wallet, 0, now, now);
     user = db.prepare('SELECT * FROM users WHERE wallet = ?').get(wallet) as unknown as UserRow;
   } else {
     db.prepare('UPDATE users SET last_seen = ? WHERE wallet = ?').run(Date.now(), wallet);
@@ -268,9 +268,13 @@ export function crateAllowance(user: UserRow): {
 } {
   const perDay = COMPOUND_LEVELS[Math.min(user.compound_level, MAX_COMPOUND_LEVEL)].cratesPerDay;
   const today = dayIndex(Date.now());
-  const used = user.crates_day === today ? user.crates_opened_today : 0;
-  const remaining = Math.max(0, perDay - used);
-  return { rigCratesRemaining: remaining, shaftCratesRemaining: remaining, perDay };
+  const rigUsed = user.crates_day === today ? user.rig_crates_opened_today : 0;
+  const shaftUsed = user.crates_day === today ? user.shaft_crates_opened_today : 0;
+  return {
+    rigCratesRemaining: Math.max(0, perDay - rigUsed),
+    shaftCratesRemaining: Math.max(0, perDay - shaftUsed),
+    perDay,
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -373,17 +377,23 @@ export function openCrate(
     ({ rarity, pityTriggered } = rollRarity(user));
   }
 
-  // Pay: 50/30/20 burn/reserve/treasury + 0.002 SOL protocol fee.
+  // Pay: 50/30/20 burn/reserve/treasury + 0.00002 ETH protocol fee.
   const burn = Math.floor((SPLIT_BURN_BPS * cost) / 10000);
   const reserve = Math.floor((SPLIT_RESERVE_BPS * cost) / 10000);
   const treasury = cost - burn - reserve;
   const now = Date.now();
   const today = dayIndex(now);
   const tier = RARITIES.indexOf(rarity);
+  const rigIncrement = crateType === 'rig_crate' ? 1 : 0;
+  const shaftIncrement = crateType === 'shaft_crate' ? 1 : 0;
   db.prepare(
     `UPDATE users SET
        osr_balance = osr_balance - ?,
        crates_opened_today = CASE WHEN crates_day = ? THEN crates_opened_today + 1 ELSE 1 END,
+       rig_crates_opened_today = CASE
+         WHEN crates_day = ? THEN rig_crates_opened_today + ? ELSE ? END,
+       shaft_crates_opened_today = CASE
+         WHEN crates_day = ? THEN shaft_crates_opened_today + ? ELSE ? END,
        crates_day = ?,
        last_crate_at = ?,
        pity_legendary = ?,
@@ -394,13 +404,19 @@ export function openCrate(
     cost,
     today,
     today,
+    rigIncrement,
+    rigIncrement,
+    today,
+    shaftIncrement,
+    shaftIncrement,
+    today,
     now,
     tier >= RARITIES.indexOf('legendary') ? 0 : user.pity_legendary + 1,
     tier >= RARITIES.indexOf('mythic') ? 0 : user.pity_mythic + 1,
     tier >= RARITIES.indexOf('divine') ? 0 : user.pity_divine + 1,
     wallet
   );
-  paySplits(wallet, 'crate_open', cost, { burn, reserve, treasury }, 2_000_000, {
+  paySplits(wallet, 'crate_open', cost, { burn, reserve, treasury }, CRATE_FEE_ETH, {
     crateType,
     slot,
     rarity,
@@ -457,7 +473,7 @@ export function mintNode(wallet: string, familyKey: string) {
   db.prepare(
     'UPDATE users SET osr_balance = osr_balance - ?, welcome_started_at = COALESCE(welcome_started_at, ?) WHERE wallet = ?'
   ).run(fam.burnCostOsr, now, wallet);
-  paySplits(wallet, 'mint_node', fam.burnCostOsr, { burn, treasury }, fam.solMintFeeLamports, {
+  paySplits(wallet, 'mint_node', fam.burnCostOsr, { burn, treasury }, fam.mintFeeEth, {
     familyKey,
   });
   const res = db
@@ -560,7 +576,7 @@ export function compoundInfo(wallet: string) {
         : {
             targetLevel: next,
             totalOsr: nextDef.osrUpgradeCost,
-            solLamports: COMPOUND_SOL_FEE,
+            feeEth: COMPOUND_FEE_ETH,
             burnOsr: (nextDef.osrUpgradeCost * SPLIT_BURN_BPS) / 10000,
             reserveOsr: (nextDef.osrUpgradeCost * SPLIT_RESERVE_BPS) / 10000,
             treasuryOsr:
@@ -577,7 +593,7 @@ export function upgradeCompound(wallet: string, expedite = false) {
   const user = getOrCreateUser(wallet);
   if (!info.nextUpgradeCost) throw new GameError('already at max compound level');
   if (!expedite && info.cooldownRemainingMs > 0)
-    throw new GameError('Compound is cooling down — expedite for 1 SOL or wait.');
+    throw new GameError('Compound is cooling down — expedite for 0.005 ETH or wait.');
   const { totalOsr, burnOsr, reserveOsr, treasuryOsr, targetLevel } = info.nextUpgradeCost;
   if (user.osr_balance < totalOsr)
     throw new GameError(
@@ -593,7 +609,7 @@ export function upgradeCompound(wallet: string, expedite = false) {
     expedite ? 'compound_expedite' : 'compound_upgrade',
     totalOsr,
     { burn: burnOsr, reserve: reserveOsr, treasury: treasuryOsr },
-    COMPOUND_SOL_FEE + (expedite ? 1_000_000_000 : 0),
+    COMPOUND_FEE_ETH + (expedite ? EXPEDITE_FEE_ETH : 0),
     { targetLevel }
   );
 
@@ -709,14 +725,13 @@ export function xstockPending(wallet: string) {
 }
 
 export function xstockClaim(wallet: string, assetSymbol: 'XOMX' | 'CVXX') {
-  const db = getDb();
   const user = getOrCreateUser(wallet);
   const amount = assetSymbol === 'XOMX' ? user.xstock_xomx : user.xstock_cvxx;
   if (amount <= 0) return { ok: false, reason: 'nothing_pending' };
-  const col = assetSymbol === 'XOMX' ? 'xstock_xomx' : 'xstock_cvxx';
-  db.prepare(`UPDATE users SET ${col} = 0 WHERE wallet = ?`).run(wallet);
-  addLedger(wallet, 'xstock_claim', amount, { assetSymbol });
-  return { ok: true, txSignature: `LOCAL_${randomUUID()}`, amount };
+  throw new GameError(
+    `${assetSymbol} claims are unavailable until the token and claim contracts are deployed`,
+    503
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -775,6 +790,25 @@ export function userOperation(wallet: string) {
 export function protocolOverview() {
   const now = Date.now();
   const g = genesisMs();
+  if (!CONTRACTS_CONFIGURED) {
+    const halving = halvingInfo(g, now);
+    return {
+      networkProductionRate: 0,
+      emissionFactors: { simNetworkGp: 0, shareCap: SHARE_CAP },
+      totalNodes: 0,
+      totalOilRigs: 0,
+      totalMiningShafts: 0,
+      totalSupply: 0,
+      totalOsrBurned: 0,
+      totalCreatorRewardsProcessed: 0,
+      osrReserveBalance: 0,
+      xomxReserveBalance: 0,
+      cvxxReserveBalance: 0,
+      treasury: 0,
+      genesisMs: g,
+      halving: { ...halving, currentRatePerSec: 0, nextRatePerSec: 0 },
+    };
+  }
   const counters = protocolCounters();
   const db = getDb();
   const totalNodes = (db.prepare('SELECT COUNT(*) AS c FROM nodes').get() as { c: number }).c;
@@ -833,15 +867,6 @@ export function leaderboard(metric = 'compound_level') {
         : 'compoundLevel';
   rows.sort((a, b) => (b[key] as number) - (a[key] as number));
   return rows.slice(0, 100).map((r, i) => ({ rank: i + 1, ...r }));
-}
-
-export function reservesView() {
-  const c = protocolCounters();
-  return [
-    { walletLabel: 'OSR Emission Reserve', walletAddress: 'RESERVEPDA1111111111111111111111111111111111', assetSymbol: 'OSR', balanceUi: Math.max(0, TOTAL_SUPPLY - c.emitted + c.reserve) },
-    { walletLabel: 'Burn Wallet', walletAddress: '1nc1nerator11111111111111111111111111111111', assetSymbol: 'OSR', balanceUi: c.burned },
-    { walletLabel: 'Treasury', walletAddress: '6sVZaZRvdU5X9W4SWckL7mxgPS4UYZtsgFjYMEwDCuGY', assetSymbol: 'OSR', balanceUi: c.treasury },
-  ];
 }
 
 export function treasuryEvents(limit = 100) {

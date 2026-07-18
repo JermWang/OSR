@@ -7,9 +7,12 @@ import { api, type ProtocolOverview } from '@/lib/api-client';
 import { AURA_TIERS } from '@/lib/aura';
 import {
   CLAIM_FEE_BPS,
+  COMPOUND_FEE_ETH,
   COMPOUND_LEVELS,
+  CRATE_FEE_ETH,
+  EXPEDITE_FEE_ETH,
   MAX_COMPOUND_LEVEL,
-  SOL_MINT_FEE_LAMPORTS,
+  MINT_FEE_ETH,
   getCrateCost,
   getShaftBonusSlots,
 } from '@/lib/economy';
@@ -23,10 +26,10 @@ interface FamilyEcon {
   burnCostOsr: number;
   burnShareBps: number;
   treasuryShareBps: number;
-  solMintFeeLamports: number;
+  mintFeeEth: number;
 }
 
-const REWARD_FLOW = `Genesis: 229M OSR pre-minted to OSR Emission Reserve PDA
+const REWARD_FLOW = `Genesis: 229M OSR pre-minted to the protocol-owned OSR Emission Reserve contract
          (mint authority revoked immediately after distribution)
                 │
                 ▼
@@ -45,7 +48,7 @@ const REWARD_FLOW = `Genesis: 229M OSR pre-minted to OSR Emission Reserve PDA
   │  pay OSR                │       │  pay OSR (compoundable)  │
   └─────────────────────────┘       └──────────────────────────┘
 
-  Separately: Protocol SOL revenue (Token-2022 2% + LP 2%) → treasury ops
+  Separately: Protocol ETH revenue (ERC-20 tax 2% + LP 2%) → treasury ops
   (XOMX/CVXX swap path is a legacy ops-side flow, not a user-rewards path)`;
 
 const HALVING_TABLE = `E(t) = E₀ × 0.5 ^ (t / 7 days)
@@ -91,7 +94,7 @@ export default function TokenomicsPage() {
     })();
   }, []);
 
-  const mintSolFee = (families?.[0]?.solMintFeeLamports ?? SOL_MINT_FEE_LAMPORTS) / 1e9;
+  const mintEthFee = families?.[0]?.mintFeeEth ?? MINT_FEE_ETH;
 
   return (
     <PageShell
@@ -103,7 +106,7 @@ export default function TokenomicsPage() {
         <Section title="1. The Economic Loop">
           <ol className="list-decimal space-y-3 pl-5 text-sm leading-relaxed text-steel-300">
             <li>
-              Users burn OSR + pay a SOL fee to deploy virtual nodes (Oil Rigs or Mining Shafts).
+              Users burn OSR + pay an ETH fee to deploy virtual nodes (Oil Rigs or Mining Shafts).
             </li>
             <li>
               Every mint burns <strong className="text-white">70%</strong> of the OSR cost to the
@@ -122,12 +125,13 @@ export default function TokenomicsPage() {
               <strong className="text-white">Mining Shafts</strong> accrue{' '}
               <strong className="text-white">$OSR</strong> per second out of that reserve.
               Progression is wallet-wide: <strong className="text-white">compound upgrades</strong>{' '}
-              (OSR + 0.001 SOL, 12h cooldown) raise your Compound Level, unlocking more node slots,
+              (OSR + {COMPOUND_FEE_ETH} ETH, 12h cooldown) raise your Compound Level, unlocking
+              more node slots,
               more daily crates, and higher rarity pools. Mining Shafts add bonus node slots at L5+.
             </li>
             <li>
-              Protocol SOL revenue (Token-2022 2% transfer fee + Meteora DAMM v2 LP 2% fee) flows to
-              the treasury ops budget — it funds infrastructure, not user rewards. User accrual is
+              Protocol ETH revenue (ERC-20 transfer tax (2%) + DEX LP fees (2%)) flows to the
+              treasury ops budget — it funds infrastructure, not user rewards. User accrual is
               OSR-only from the halving reserve.
             </li>
           </ol>
@@ -157,7 +161,7 @@ export default function TokenomicsPage() {
                       v={`${((f.burnCostOsr * f.treasuryShareBps) / 10000).toLocaleString()} OSR`}
                       dim
                     />
-                    <Row k="SOL mint fee" v={`${f.solMintFeeLamports / 1e9} SOL`} />
+                    <Row k="ETH mint fee" v={`${f.mintFeeEth} ETH`} />
                     <Row k="Reward asset" v="OSR (halving share)" />
                     <Row k="Share formula" v="min(userGp / totalGp, 30%) × E(t) × welcomeBoost" />
                     <Row
@@ -180,7 +184,7 @@ export default function TokenomicsPage() {
           <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
             <FeeCard label="Mint burn" value="70%" caption="of OSR cost" />
             <FeeCard label="Mint treasury" value="30%" caption="of OSR cost" />
-            <FeeCard label="Mint SOL fee" value={`${mintSolFee} SOL`} caption="flat, per mint" />
+            <FeeCard label="Mint ETH fee" value={`${mintEthFee} ETH`} caption="flat, per mint" />
             <FeeCard
               label="Claim fee"
               value={`${CLAIM_FEE_BPS / 100}%`}
@@ -189,13 +193,17 @@ export default function TokenomicsPage() {
             <FeeCard
               label="Compound upgrade"
               value="500 → 60k OSR"
-              caption="L2→L10 ladder · +0.001 SOL · 12h cooldown"
+              caption={`L2→L10 ladder · +${COMPOUND_FEE_ETH} ETH · 12h cooldown`}
             />
-            <FeeCard label="Expedite" value="1 SOL" caption="skip the compound cooldown" />
+            <FeeCard
+              label="Expedite"
+              value={`${EXPEDITE_FEE_ETH} ETH`}
+              caption="skip the compound cooldown"
+            />
             <FeeCard
               label="Crate cost"
               value={`${getCrateCost(1)} → ${getCrateCost(10)} OSR`}
-              caption="by compound level · +0.002 SOL fee"
+              caption={`by compound level · +${CRATE_FEE_ETH} ETH fee`}
             />
             <FeeCard
               label="Upgrade & crate split"
@@ -207,6 +215,12 @@ export default function TokenomicsPage() {
 
         {/* 4. Reward Flow */}
         <Section title="4. Reward Flow">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src="/OSR-reward-flow-graph.png"
+            alt="OSR reward flow"
+            className="mb-4 w-full rounded-lg border border-ink-600"
+          />
           <div className="panel overflow-x-auto p-4">
             <pre className="font-mono text-[11px] leading-relaxed text-steel-300">{REWARD_FLOW}</pre>
           </div>
@@ -229,7 +243,7 @@ export default function TokenomicsPage() {
           </div>
           <p className="mt-3 text-sm leading-relaxed text-steel-300">
             Lifetime emission = <strong className="text-white">229M OSR</strong>, pre-minted to the
-            program-owned emission reserve PDA at genesis. Mint authority is revoked
+            protocol-owned emission reserve contract at genesis. Mint authority is revoked
             post-distribution — no new supply can ever be created.
           </p>
           <p className="mt-3 text-sm leading-relaxed text-steel-300">
@@ -290,7 +304,8 @@ export default function TokenomicsPage() {
           <p className="text-sm leading-relaxed text-steel-300">
             Progression is wallet-wide. Each compound level unlocks more node slots per family, a
             higher daily crate limit, and pricier crates. Upgrades cost OSR (split 50/30/20 burn /
-            reserve / treasury) + 0.001 SOL, on a 12h cooldown (1 SOL expedite skips it). Mining
+            reserve / treasury) + {COMPOUND_FEE_ETH} ETH, on a 12h cooldown ({EXPEDITE_FEE_ETH} ETH
+            expedite skips it). Mining
             Shafts get bonus node slots on top: +2 at L5, +3 at L7, +4 at L9. Rarity pools unlock by
             level too — Legendary at L4, Mythic at L6, Divine at L8.
           </p>
@@ -378,9 +393,9 @@ export default function TokenomicsPage() {
                 suffix={`${overview.totalOilRigs} oil · ${overview.totalMiningShafts} mine`}
               />
               <LiveCard
-                label="Protocol SOL Revenue"
+                label="Protocol ETH Revenue"
                 value={overview.totalCreatorRewardsProcessed.toFixed(4)}
-                suffix="SOL (Token-2022 + LP)"
+                suffix="ETH (transfer tax + LP)"
               />
               <LiveCard
                 label="XOMX Reserve"

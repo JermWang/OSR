@@ -1,11 +1,12 @@
 import type { Metadata, Viewport } from 'next';
 import './globals.css';
-import WalletContext from '@/components/providers/WalletContext';
+import PrivyAppProvider from '@/components/providers/PrivyAppProvider';
 
 export const metadata: Metadata = {
   title: 'OSR — Oil Strategic Reserve',
   description:
-    'Deploy oil rigs and mining shafts, equip rarity components, open crates, and compound your operation on Solana devnet.',
+    'Deploy oil rigs and mining shafts, equip rarity components, open crates, and compound your operation on Robinhood Chain.',
+  icons: { icon: '/logo.jpg' },
 };
 
 export const viewport: Viewport = {
@@ -19,7 +20,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="en" suppressHydrationWarning>
       <body>
-        <WalletContext>{children}</WalletContext>
+        <PrivyAppProvider>{children}</PrivyAppProvider>
       </body>
     </html>
   );

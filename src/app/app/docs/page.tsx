@@ -1,11 +1,26 @@
 'use client';
 
+import { useState } from 'react';
 import Link from 'next/link';
 import PageShell from '@/components/ui/PageShell';
 import ComponentTile from '@/components/ui/ComponentTile';
+import NodePreview from '@/components/three/NodePreview';
 import { AURA_TIERS } from '@/lib/aura';
-import { RARITY_MULT } from '@/lib/economy';
-import { NODE_SLOTS, RARITIES, SLOT_LABELS, rarityHex, type Rarity } from '@/lib/rarity';
+import {
+  COMPOUND_FEE_ETH,
+  CRATE_FEE_ETH,
+  EXPEDITE_FEE_ETH,
+  MINT_FEE_ETH,
+  RARITY_MULT,
+} from '@/lib/economy';
+import {
+  NODE_SLOTS,
+  RARITIES,
+  SLOT_LABELS,
+  rarityHex,
+  type NodeFamily,
+  type Rarity,
+} from '@/lib/rarity';
 
 const CONTENTS: Array<{ href: string; label: string }> = [
   { href: '#overview', label: '1. What is OSR?' },
@@ -74,11 +89,12 @@ const FAQ: Array<{ q: string; a: React.ReactNode }> = [
     a: (
       <p>
         The entire OSR emission for the project&rsquo;s lifetime —{' '}
-        <strong className="text-white">229M OSR</strong> — is pre-minted to a program-owned emission
-        reserve PDA at genesis. Mint authority is revoked immediately after, so no new OSR can ever
-        be created. Each second, the halving curve determines how much OSR flows out to users
-        proportional to their grow-power share. Protocol SOL revenue (Token-2022 2% transfer fee +
-        LP 2%) goes to a separate treasury and funds infrastructure/ops, not user rewards. The{' '}
+        <strong className="text-white">229M OSR</strong> — is pre-minted to a protocol-owned
+        emission reserve contract at genesis. Mint authority is revoked immediately after, so no new
+        OSR can ever be created. Each second, the halving curve determines how much OSR flows out to
+        users proportional to their grow-power share. Protocol ETH revenue (ERC-20 transfer tax (2%)
+        + DEX LP fees (2%)) goes to a separate treasury and funds infrastructure/ops, not user
+        rewards. The{' '}
         <Link href="/app/vault" className="text-amber-500 hover:underline">
           Vault
         </Link>{' '}
@@ -114,7 +130,7 @@ const FAQ: Array<{ q: string; a: React.ReactNode }> = [
       <p>
         OSR reads wallet addresses only — no email, no KYC. Your game state (nodes, components,
         pending rewards) lives on OSR servers keyed to your wallet; token balances, burns, and claim
-        payouts settle on-chain to your wallet.
+        payouts settle on Robinhood Chain to your wallet.
       </p>
     ),
   },
@@ -146,7 +162,8 @@ export default function DocsPage() {
         <Section id="overview" title="1. What is OSR?">
           <p>
             <strong className="text-white">Oil Strategic Reserve (OSR)</strong> is a gamified,
-            virtual node-mining platform on Solana. You burn{' '}
+            virtual node-mining platform on Robinhood Chain — an EVM L2 settling on Ethereum. You
+            burn{' '}
             <strong className="text-white">$OSR</strong> tokens to deploy virtual{' '}
             <strong className="text-white">Oil Rigs</strong> and{' '}
             <strong className="text-white">Mining Shafts</strong> on your own 3D compound. Those
@@ -176,12 +193,13 @@ export default function DocsPage() {
               <Link href="/app" className="text-amber-500 hover:underline">
                 Command Center
               </Link>{' '}
-              and connect a Solana wallet. In mock mode you can just paste any address to try the
-              game.
+              and sign in with email or Google to create a Privy embedded EVM wallet. You can also
+              link MetaMask, Rabby, or Robinhood Wallet. Unauthenticated guest addresses are not
+              supported because they cannot securely authorize transactions.
             </Step>
             <Step n={2} title="Deploy your first node">
               Tap <strong className="text-white">Deploy</strong>. Pick an Oil Rig or Mining Shaft,
-              burn the required $OSR + small SOL fee, and it appears on your compound.
+              burn the required $OSR + small ETH fee, and it appears on your compound.
             </Step>
             <Step n={3} title="Let it produce">
               Nodes accrue rewards every second based on your components&rsquo; grow-power and your
@@ -278,17 +296,7 @@ export default function DocsPage() {
             Higher levels also pump up the scene&rsquo;s bloom intensity — a max-level compound
             looks visibly brighter than a fresh one.
           </p>
-          {/* Live preview placeholder (3D module ships separately) */}
-          <div className="rounded-lg border border-dashed border-steel-500/40 p-6 text-center">
-            <p className="stat-label">Live preview — each level</p>
-            <p className="mt-2 text-sm text-steel-400">
-              The interactive 3D level preview loads on the{' '}
-              <Link href="/app" className="text-amber-500 hover:underline">
-                Command
-              </Link>{' '}
-              page.
-            </p>
-          </div>
+          <InteractiveModelExplorer />
           <p className="text-xs text-steel-500">
             Higher levels upgrade the rig&rsquo;s material era (rough steel → reinforced → high-tech
             → black-and-gold prestige), grow its size, and light a powered deck ring at the
@@ -301,8 +309,8 @@ export default function DocsPage() {
           <p>
             Each node has <strong className="text-white">4 component slots</strong>. Components are
             earned by opening <strong className="text-white">Supply Crates</strong> — 500 $OSR at L1
-            scaling to 1,625 $OSR at L10 (split 50/30/20 burn / reserve / treasury), plus a flat
-            0.002 SOL protocol fee. Your daily crate limit scales with Compound Level — from 3/day
+            scaling to 1,625 $OSR at L10 (split 50/30/20 burn / reserve / treasury), plus a flat{' '}
+            {CRATE_FEE_ETH} ETH protocol fee. Your daily crate limit scales with Compound Level — from 3/day
             at L1 up to 20/day at L10, per node type. Every drop has a rarity tier that multiplies
             the node&rsquo;s output:
           </p>
@@ -471,7 +479,7 @@ export default function DocsPage() {
             wallet-wide progression track. Each upgrade costs $OSR — from{' '}
             <strong className="text-white">500 OSR</strong> for L2 up to{' '}
             <strong className="text-white">60,000 OSR</strong> for L10, split 50/30/20 burn /
-            reserve / treasury — plus a flat 0.001 SOL fee. Each level unlocks:
+            reserve / treasury — plus a flat {COMPOUND_FEE_ETH} ETH fee. Each level unlocks:
           </p>
           <ul className="list-disc space-y-1 pl-5">
             <li>
@@ -489,8 +497,8 @@ export default function DocsPage() {
           </ul>
           <p>
             Upgrades have a <strong className="text-white">12-hour cooldown</strong>. In a hurry,
-            you can <strong className="text-white">expedite</strong>: pay 1 SOL to skip the cooldown
-            for one upgrade (the fee goes to the treasury).
+            you can <strong className="text-white">expedite</strong>: pay {EXPEDITE_FEE_ETH} ETH to
+            skip the cooldown for one upgrade (the fee goes to the treasury).
           </p>
           <p>
             See the full level table on the{' '}
@@ -506,18 +514,22 @@ export default function DocsPage() {
           <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
             <FeeCard label="Mint burn" value="70%" caption="of OSR cost to burn wallet" />
             <FeeCard label="Mint treasury" value="30%" caption="of OSR cost to treasury" />
-            <FeeCard label="Mint SOL fee" value="0.05 SOL" caption="flat, per mint" />
+            <FeeCard label="Mint ETH fee" value={`${MINT_FEE_ETH} ETH`} caption="flat, per mint" />
             <FeeCard label="Claim fee" value="2%" caption="retained in reserve · 1h cooldown" />
             <FeeCard
               label="Compound upgrade"
               value="500 → 60k OSR"
-              caption="L2→L10 · +0.001 SOL · 12h cooldown"
+              caption={`L2→L10 · +${COMPOUND_FEE_ETH} ETH · 12h cooldown`}
             />
-            <FeeCard label="Expedite" value="1 SOL" caption="skip the compound cooldown" />
+            <FeeCard
+              label="Expedite"
+              value={`${EXPEDITE_FEE_ETH} ETH`}
+              caption="skip the compound cooldown"
+            />
             <FeeCard
               label="Crate cost"
               value="500 → 1625 OSR"
-              caption="by compound level · +0.002 SOL fee"
+              caption={`by compound level · +${CRATE_FEE_ETH} ETH fee`}
             />
             <FeeCard
               label="Upgrade & crate split"
@@ -605,12 +617,92 @@ export default function DocsPage() {
             ranks operators by max level, sum of levels, and total production.
           </p>
           <p>
+            <strong className="text-steel-300">Community:</strong>{' '}
+            <a
+              href="https://x.com/OSRRHOOD"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-amber-500 hover:underline"
+            >
+              Follow @OSRRHOOD on 𝕏
+            </a>
+          </p>
+          <p>
             This guide describes current behavior. Mechanics may change as the protocol evolves —
             we&rsquo;ll update this page first when they do.
           </p>
         </footer>
       </div>
     </PageShell>
+  );
+}
+
+function InteractiveModelExplorer() {
+  const [family, setFamily] = useState<NodeFamily>('oil');
+  const [rarity, setRarity] = useState<Rarity>('common');
+  const [level, setLevel] = useState(1);
+  const components = NODE_SLOTS[family].map((slot) => ({ slot, rarity }));
+
+  return (
+    <div className="overflow-hidden rounded-lg border border-steel-500/40 bg-ink-800/60">
+      <div className="flex flex-wrap items-end gap-3 border-b border-ink-600 p-3">
+        <div>
+          <label className="stat-label block" htmlFor="model-family">
+            Family
+          </label>
+          <select
+            id="model-family"
+            className="mt-1 rounded border border-ink-600 bg-ink-900 px-3 py-2 text-sm text-white"
+            value={family}
+            onChange={(event) => setFamily(event.target.value as NodeFamily)}
+          >
+            <option value="oil">Oil Rig</option>
+            <option value="mine">Mining Shaft</option>
+          </select>
+        </div>
+        <div>
+          <label className="stat-label block" htmlFor="model-rarity">
+            Component rarity
+          </label>
+          <select
+            id="model-rarity"
+            className="mt-1 rounded border border-ink-600 bg-ink-900 px-3 py-2 text-sm text-white"
+            value={rarity}
+            onChange={(event) => setRarity(event.target.value as Rarity)}
+          >
+            {RARITIES.map((item) => (
+              <option key={item} value={item}>
+                {rarityLabel(item)}
+              </option>
+            ))}
+          </select>
+        </div>
+        <div>
+          <label className="stat-label block" htmlFor="model-level">
+            Node level
+          </label>
+          <select
+            id="model-level"
+            className="mt-1 rounded border border-ink-600 bg-ink-900 px-3 py-2 text-sm text-white"
+            value={level}
+            onChange={(event) => setLevel(Number(event.target.value))}
+          >
+            {Array.from({ length: 10 }, (_, index) => index + 1).map((item) => (
+              <option key={item} value={item}>
+                Level {item}
+              </option>
+            ))}
+          </select>
+        </div>
+        <p className="ml-auto text-xs text-steel-500">
+          Original full-size Blender GLB · exact source geometry · 7 material tiers
+        </p>
+      </div>
+      <NodePreview
+        className="h-[360px] rounded-none border-0"
+        node={{ id: 'guide-preview', type: family, level, isActive: true, components }}
+      />
+    </div>
   );
 }
 

@@ -2,6 +2,7 @@
 
 import { usePathname } from 'next/navigation';
 import { useWalletStore } from '@/lib/store';
+import { CHAIN } from '@/lib/config';
 
 export default function DisclaimerModal() {
   const pathname = usePathname();
@@ -15,14 +16,15 @@ export default function DisclaimerModal() {
     <div className="fixed inset-0 z-[60] flex items-center justify-center bg-ink-900/95 p-6">
       <div className="max-w-lg rounded-lg border border-amber-500/50 bg-ink-800 p-6">
         <h2 className="mb-3 font-mono text-sm uppercase tracking-widest text-amber-500">
-          DEVNET — Test tokens only
+          {CHAIN.name} — Mainnet
         </h2>
         <p className="mb-4 text-sm leading-relaxed text-steel-300">
-          You’re about to try OSR on Solana <strong>devnet</strong>. All tokens here are test
-          tokens with no real value. We’ll auto-drip 0.05 devnet SOL and 2500 starter OSR to your
-          wallet on first connect so you can start immediately — no external faucet needed. Phantom
-          must be set to <strong>Devnet</strong> (Settings → Developer Settings). Or use{' '}
-          <strong>Play as Guest</strong> — no wallet needed, same game.
+          You’re about to play OSR on <strong>{CHAIN.name}</strong> (chain {CHAIN.id}), an
+          EVM L2 that settles on Ethereum with ETH as gas. Privy can provision an embedded wallet,
+          or you can link MetaMask, Rabby, or Robinhood Wallet. Wallet approvals and transactions
+          must be confirmed through your authenticated wallet. Mainnet transactions use real
+          assets and cannot be reversed. OSR is a game, not a financial product; rewards are not
+          guaranteed.
         </p>
         <div className="flex flex-col gap-2 sm:flex-row">
           <button

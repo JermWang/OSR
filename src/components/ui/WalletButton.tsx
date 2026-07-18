@@ -1,76 +1,128 @@
 'use client';
 
-// Wallet connect button. Supports real Solana wallets (Phantom/Solflare/
-// Backpack via wallet-adapter) plus a Guest mode that generates a local
-// keypair-style address — the whole game economy is local, so guests get the
-// full experience without a wallet extension.
+// EIP-6963 wallet selector for MetaMask, Rabby, Robinhood Wallet, and other
+// injected EVM wallets. A connected provider is the only accepted identity;
+// generated guest addresses are intentionally unsupported.
 
-import { useEffect, useMemo, useRef, useState } from 'react';
-import { useWallet } from '@solana/wallet-adapter-react';
+import { useEffect, useRef, useState } from 'react';
+import { useEvmWallet, isWrongChain, shortAddress } from '@/lib/evm';
 import { useWalletStore } from '@/lib/store';
 import { useOperation } from '@/lib/useOperation';
+import { CHAIN, CONTRACTS_CONFIGURED } from '@/lib/config';
+import { PRIVY_CONFIGURED } from '@/lib/config';
+import PrivyWalletButton from './PrivyWalletButton';
 
-function randomBase58(len = 44): string {
-  const alphabet = '123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz';
-  let out = '';
-  const bytes = new Uint8Array(len);
-  crypto.getRandomValues(bytes);
-  for (let i = 0; i < len; i++) out += alphabet[bytes[i] % alphabet.length];
-  return out;
+function displayBalance(value: string | null, digits = 5): string {
+  if (value == null) return '—';
+  const numeric = Number(value);
+  return Number.isFinite(numeric) ? numeric.toLocaleString(undefined, { maximumFractionDigits: digits }) : value;
 }
 
 export default function WalletButton() {
-  const { wallets, select, connect, disconnect, publicKey, connected, connecting, wallet } = useWallet();
-  const storeWallet = useWalletStore((s) => s.wallet);
-  const setStoreWallet = useWalletStore((s) => s.setWallet);
-  const setOpWallet = useOperation((s) => s.setWallet);
+  return PRIVY_CONFIGURED ? <PrivyWalletButton /> : <InjectedWalletButton />;
+}
+
+function InjectedWalletButton() {
+  const {
+    wallets,
+    address,
+    chainId,
+    nativeBalance,
+    osrBalance,
+    osrSymbol,
+    connecting,
+    initialized,
+    error,
+    initialize,
+    connect,
+    switchToRobinhood,
+    refreshBalances,
+    disconnect,
+  } = useEvmWallet();
+  const setStoreWallet = useWalletStore((state) => state.setWallet);
+  const setOpWallet = useOperation((state) => state.setWallet);
   const [open, setOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
 
-  const activeWallet = connected && publicKey ? publicKey.toBase58() : storeWallet;
+  useEffect(() => initialize(), [initialize]);
 
-  // Propagate the active wallet into the game store/poller.
   useEffect(() => {
-    if (connected && publicKey) {
-      const w = publicKey.toBase58();
-      setStoreWallet(w);
-      setOpWallet(w);
-    } else if (storeWallet) {
-      setOpWallet(storeWallet);
-    } else {
+    if (address) {
+      setStoreWallet(address);
+      setOpWallet(address);
+    } else if (initialized) {
+      // Clear legacy generated guest addresses from persisted state.
+      setStoreWallet(null);
       setOpWallet(null);
     }
-  }, [connected, publicKey, storeWallet, setStoreWallet, setOpWallet]);
+  }, [address, initialized, setStoreWallet, setOpWallet]);
 
   useEffect(() => {
-    const onDoc = (e: MouseEvent) => {
-      if (menuRef.current && !menuRef.current.contains(e.target as Node)) setOpen(false);
+    const onDocumentPointer = (event: MouseEvent) => {
+      if (menuRef.current && !menuRef.current.contains(event.target as Node)) setOpen(false);
     };
-    document.addEventListener('mousedown', onDoc);
-    return () => document.removeEventListener('mousedown', onDoc);
+    document.addEventListener('mousedown', onDocumentPointer);
+    return () => document.removeEventListener('mousedown', onDocumentPointer);
   }, []);
 
-  const installed = useMemo(
-    () => wallets.filter((w) => w.readyState === 'Installed'),
-    [wallets]
-  );
-
-  if (activeWallet) {
+  if (address) {
+    const wrongChain = isWrongChain(chainId);
     return (
-      <div className="relative" ref={menuRef}>
+      <div className="relative flex items-center gap-2" ref={menuRef}>
+        {wrongChain ? (
+          <button
+            className="rounded border border-red-500/60 bg-red-500/10 px-2 py-1 font-mono text-[10px] uppercase tracking-wider text-red-300"
+            onClick={() => void switchToRobinhood()}
+            disabled={connecting}
+          >
+            Switch network
+          </button>
+        ) : (
+          <span className="hidden rounded border border-emerald-500/30 bg-emerald-500/10 px-2 py-1 font-mono text-[10px] uppercase tracking-wider text-emerald-300 sm:block">
+            RH Mainnet
+          </span>
+        )}
         <button
           className="rounded border border-steel-500/60 bg-ink-800 px-3 py-1.5 font-mono text-xs text-steel-200 hover:border-amber-500"
-          onClick={() => setOpen((o) => !o)}
+          onClick={() => setOpen((current) => !current)}
         >
-          {activeWallet.slice(0, 4)}…{activeWallet.slice(-4)}
+          {shortAddress(address)}
         </button>
         {open && (
-          <div className="absolute right-0 top-full z-50 mt-1 w-44 rounded border border-ink-600 bg-ink-800 p-1 shadow-xl">
+          <div className="absolute right-0 top-full z-50 mt-1 w-64 rounded border border-ink-600 bg-ink-800 p-2 shadow-xl">
+            <div className="rounded border border-ink-600 bg-ink-900/60 p-2.5">
+              <div className="flex items-center justify-between text-xs">
+                <span className="text-steel-400">ETH balance</span>
+                <span className="font-mono text-white">{displayBalance(nativeBalance)} ETH</span>
+              </div>
+              <div className="mt-1.5 flex items-center justify-between text-xs">
+                <span className="text-steel-400">Token balance</span>
+                <span className="font-mono text-white">
+                  {CONTRACTS_CONFIGURED ? `${displayBalance(osrBalance, 3)} ${osrSymbol}` : 'Not deployed'}
+                </span>
+              </div>
+            </div>
+            {error && <p className="px-2 py-2 text-[11px] text-red-400">{error}</p>}
+            <button
+              className="mt-1 w-full rounded px-3 py-2 text-left text-xs text-steel-300 hover:bg-ink-700"
+              onClick={() => void refreshBalances()}
+              disabled={wrongChain}
+            >
+              Refresh balances
+            </button>
+            <a
+              className="block w-full rounded px-3 py-2 text-left text-xs text-steel-300 hover:bg-ink-700"
+              href={`${CHAIN.explorer}/address/${address}`}
+              target="_blank"
+              rel="noreferrer"
+            >
+              View on Blockscout ↗
+            </a>
             <button
               className="w-full rounded px-3 py-2 text-left text-xs text-steel-300 hover:bg-ink-700"
-              onClick={async () => {
+              onClick={() => {
                 setOpen(false);
-                if (connected) await disconnect().catch(() => undefined);
+                disconnect();
                 setStoreWallet(null);
                 setOpWallet(null);
               }}
@@ -85,50 +137,45 @@ export default function WalletButton() {
 
   return (
     <div className="relative" ref={menuRef}>
-      <button className="btn-primary !py-1.5 text-sm" onClick={() => setOpen((o) => !o)} disabled={connecting}>
+      <button className="btn-primary !py-1.5 text-sm" onClick={() => setOpen((current) => !current)} disabled={connecting}>
         {connecting ? 'Connecting…' : 'Connect Wallet'}
       </button>
       {open && (
-        <div className="absolute right-0 top-full z-50 mt-1 w-60 rounded border border-ink-600 bg-ink-800 p-1 shadow-xl">
-          {installed.map((w) => (
+        <div className="absolute right-0 top-full z-50 mt-1 w-72 rounded border border-ink-600 bg-ink-800 p-1.5 shadow-xl">
+          <div className="px-2 pb-1.5 pt-1 font-mono text-[10px] uppercase tracking-widest text-steel-500">
+            {CHAIN.name} · chain {CHAIN.id}
+          </div>
+          {wallets.map((wallet) => (
             <button
-              key={w.adapter.name}
+              key={wallet.uuid}
               className="flex w-full items-center gap-2 rounded px-3 py-2 text-left text-sm text-steel-200 hover:bg-ink-700"
               onClick={async () => {
-                setOpen(false);
-                try {
-                  select(w.adapter.name);
-                  await connect();
-                } catch {
-                  /* user rejected */
-                }
+                const connected = await connect(wallet.uuid);
+                if (connected) setOpen(false);
               }}
             >
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src={w.adapter.icon} alt="" className="h-5 w-5" />
-              {w.adapter.name}
-              <span className="ml-auto text-[10px] uppercase tracking-wider text-emerald-400">Detected</span>
+              {wallet.icon ? (
+                // Wallet icons are announced by the installed EIP-6963 provider.
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={wallet.icon} alt="" className="h-6 w-6 rounded" />
+              ) : (
+                <span className="grid h-6 w-6 place-items-center rounded bg-ink-700">◇</span>
+              )}
+              <span className="min-w-0 truncate">{wallet.name}</span>
+              <span className="ml-auto font-mono text-[9px] uppercase text-emerald-400">Detected</span>
             </button>
           ))}
-          {installed.length === 0 && (
-            <div className="px-3 py-2 text-xs text-steel-400">
-              No Solana wallet detected. Install Phantom, Solflare, or Backpack — or play as a guest.
+          {initialized && wallets.length === 0 && (
+            <div className="px-3 py-3 text-xs leading-relaxed text-steel-400">
+              No injected EVM wallet was detected. Install MetaMask, Rabby, or Robinhood Wallet,
+              then reload this page.
             </div>
           )}
-          <div className="my-1 border-t border-ink-600" />
-          <button
-            className="w-full rounded px-3 py-2 text-left text-sm text-amber-400 hover:bg-ink-700"
-            onClick={() => {
-              setOpen(false);
-              const w = randomBase58();
-              setStoreWallet(w);
-              setOpWallet(w);
-            }}
-          >
-            ⚡ Play as Guest
-            <div className="text-[11px] font-normal text-steel-400">local test wallet, instant start</div>
-          </button>
-          {wallet && <div className="hidden">{wallet.adapter.name}</div>}
+          {!initialized && <div className="px-3 py-3 text-xs text-steel-400">Detecting wallets…</div>}
+          {error && <p className="px-3 py-2 text-[11px] text-red-400">{error}</p>}
+          <div className="mt-1 border-t border-ink-600 px-3 py-2 text-[10px] leading-relaxed text-steel-500">
+            Wallet signatures stay in your extension. OSR never receives your private key.
+          </div>
         </div>
       )}
     </div>

@@ -46,8 +46,8 @@ export default function MarketPage() {
           <StatCard label="Mining Shafts" value={String(overview.totalMiningShafts)} />
           <StatCard label="Total OSR Burned" value={overview.totalOsrBurned.toLocaleString()} />
           <StatCard
-            label="Protocol SOL Revenue"
-            value={`${overview.totalCreatorRewardsProcessed.toFixed(4)} SOL`}
+            label="Protocol ETH Revenue"
+            value={`${overview.totalCreatorRewardsProcessed.toFixed(4)} ETH`}
           />
           <StatCard label="OSR Reserve" value={overview.osrReserveBalance.toLocaleString()} />
         </div>

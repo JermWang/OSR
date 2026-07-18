@@ -1,6 +1,11 @@
 'use client';
 
-// Client for the local game API (same-origin Next.js route handlers).
+// Client for the same-origin API. Privy tokens are attached automatically when
+// managed wallet mode is configured, allowing the server to bind every write
+// to the authenticated wallet owner.
+
+import { getAccessToken, getIdentityToken } from '@privy-io/react-auth';
+import { PRIVY_CONFIGURED } from './config';
 
 export interface NodeInfo {
   id: string;
@@ -28,7 +33,7 @@ export interface CompoundInfo {
   nextUpgradeCost: null | {
     targetLevel: number;
     totalOsr: number;
-    solLamports: number;
+    feeEth: number;
     burnOsr: number;
     reserveOsr: number;
     treasuryOsr: number;
@@ -97,12 +102,59 @@ export interface InventoryItem {
   multiplier: number;
 }
 
+export interface GlobalProfile {
+  wallet: string;
+  displayName: string | null;
+  joinedAt: number;
+  lastSeenAt: number;
+  totalSessions: number;
+  compoundLevel: number;
+  nodeCount: number;
+  maxNodeLevel: number;
+  sumNodeLevels: number;
+  productionRate: number;
+  totalProduced: number;
+  totalBurned: number;
+  online: boolean;
+}
+
+export interface ActivityItem {
+  id: number;
+  wallet: string;
+  eventType: string;
+  source: 'app' | 'onchain';
+  amount: number | null;
+  assetSymbol: string | null;
+  txHash: string | null;
+  metadata: Record<string, unknown>;
+  createdAt: string;
+}
+
 async function request<T>(path: string, opts?: RequestInit): Promise<T> {
-  const res = await fetch(`/api${path}`, {
-    ...opts,
-    headers: { 'Content-Type': 'application/json', ...(opts?.headers ?? {}) },
-    cache: 'no-store',
-  });
+  const controller = opts?.signal ? null : new AbortController();
+  const timeout = controller ? window.setTimeout(() => controller.abort(), 15_000) : null;
+  let res: Response;
+  try {
+    const [accessToken, identityToken] = PRIVY_CONFIGURED
+      ? await Promise.all([getAccessToken(), getIdentityToken()])
+      : [null, null];
+    res = await fetch(`/api${path}`, {
+      ...opts,
+      signal: opts?.signal ?? controller?.signal,
+      headers: {
+        'Content-Type': 'application/json',
+        ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
+        ...(identityToken ? { 'privy-id-token': identityToken } : {}),
+        ...(opts?.headers ?? {}),
+      },
+      cache: 'no-store',
+    });
+  } catch (error) {
+    if (controller?.signal.aborted) throw new Error('Request timed out');
+    throw error;
+  } finally {
+    if (timeout != null) window.clearTimeout(timeout);
+  }
   if (!res.ok) {
     let msg = `${res.status} ${res.statusText}`;
     try {
@@ -119,6 +171,11 @@ async function request<T>(path: string, opts?: RequestInit): Promise<T> {
 const idem = () => `idem_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
 
 export const api = {
+  privySession: (wallet: string) =>
+    request<{ authenticated: boolean; userId: string; wallet: string; walletType: string }>(
+      '/auth/session',
+      { method: 'POST', body: JSON.stringify({ wallet }) }
+    ),
   operation: (wallet: string) => request<UserOperation>(`/user/${wallet}/operation`),
   overview: () => request<ProtocolOverview>('/protocol/overview'),
   reserves: () =>
@@ -134,7 +191,7 @@ export const api = {
       `/protocol/treasury-events?limit=${limit}`
     ),
   families: () =>
-    request<Array<{ key: string; name: string; description: string; family: 'oil' | 'mine'; burnCostOsr: number; burnShareBps: number; treasuryShareBps: number; solMintFeeLamports: number }>>(
+    request<Array<{ key: string; name: string; description: string; family: 'oil' | 'mine'; burnCostOsr: number; burnShareBps: number; treasuryShareBps: number; mintFeeEth: number }>>(
       '/nodes/families'
     ),
   crateOdds: (wallet?: string) =>
@@ -143,6 +200,10 @@ export const api = {
     ),
   compound: (wallet: string) => request<CompoundInfo>(`/compound/${wallet}`),
   inventory: (wallet: string) => request<{ items: InventoryItem[] }>(`/user/${wallet}/inventory`),
+  profile: (wallet: string) =>
+    request<{ configured: boolean; profile: GlobalProfile | null; history: ActivityItem[] }>(
+      `/profiles/${wallet}`
+    ),
   leaderboard: (metric = 'compound_level') =>
     request<Array<{ rank: number; wallet: string; compoundLevel: number; maxLevel: number; sumLevel: number; nodes: number; productionRate: number; totalProduced: number; totalBurned: number }>>(
       `/leaderboard?metric=${metric}`
@@ -193,10 +254,5 @@ export const api = {
     request<{ ok: boolean; reason?: string; txSignature?: string; amount?: number }>('/xstock/claim', {
       method: 'POST',
       body: JSON.stringify({ wallet, assetSymbol, idempotencyKey: idem() }),
-    }),
-  testerTopup: (wallet: string) =>
-    request<{ ok: boolean; reason?: string; granted?: number }>('/tester-topup', {
-      method: 'POST',
-      body: JSON.stringify({ wallet }),
     }),
 };

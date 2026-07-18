@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import PageShell from '@/components/ui/PageShell';
 import { api, type ProtocolOverview } from '@/lib/api-client';
+import { CHAIN, CONTRACTS_CONFIGURED } from '@/lib/config';
 
 interface ReserveRow {
   walletLabel: string;
@@ -103,7 +104,11 @@ export default function VaultPage() {
           <section>
             <h2 className="stat-label mb-3">Treasury Wallets</h2>
             {reserves.length === 0 ? (
-              <p className="panel p-4 text-sm text-steel-400">No reserves loaded</p>
+              <p className="panel p-4 text-sm leading-relaxed text-steel-400">
+                {CONTRACTS_CONFIGURED
+                  ? 'No balances were returned by the configured reserve contracts.'
+                  : 'No OSR reserve contracts are configured yet. Placeholder wallet addresses and balances are intentionally hidden.'}
+              </p>
             ) : (
               <>
                 {/* Desktop table */}
@@ -190,9 +195,9 @@ export default function VaultPage() {
           </section>
 
           <p className="border-t border-ink-600 pt-4 text-xs text-steel-500">
-            Figures on this page are the protocol&rsquo;s live internal ledger (balances, burns, and
-            treasury events as tracked by the reward engine). On-chain verification of the reserve
-            wallets ships with real-mode launch.
+            Configured balances are read directly from {CHAIN.name} through JSON-RPC. Treasury
+            activity will appear only after deployed contract logs are indexed; local development
+            ledger entries are never presented as blockchain transactions.
           </p>
         </div>
       )}

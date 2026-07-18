@@ -2,14 +2,13 @@
 
 // Crate-opening cinematic. Phase machine mirrors the original deployment
 // (intro → rumble → peak → freeze → detonate → decel → reveal for legendary+;
-// shorter track for low tiers), with the v3 per-rarity crate models: lid
-// quadrants burst outward on diagonals, seam strips glow with the reward's
-// rarity color ramping 1.8 → 12 HDR into the bloom pass.
+// shorter track for low tiers), using the Blender-exported v2 crate for the
+// rolled rarity. The v2 scene is rotated from Z-up into Three.js Y-up.
 
 import { Suspense, useEffect, useMemo, useRef, useState } from 'react';
 import * as THREE from 'three';
 import { Canvas, useFrame, useThree } from '@react-three/fiber';
-import { useGLTF, Sparkles } from '@react-three/drei';
+import { Sparkles, useGLTF } from '@react-three/drei';
 import { EffectComposer, Bloom, ChromaticAberration, Vignette } from '@react-three/postprocessing';
 import { cratePath, RARITIES, SLOT_LABELS, type Rarity } from '@/lib/rarity';
 import { RARITY_COLOR, rarityTier } from './fx';
@@ -66,34 +65,67 @@ const LID_ROT: Record<string, [number, number, number]> = {
 
 function CrateModel({ rarity, phase, phaseT }: { rarity: Rarity; phase: Phase; phaseT: number }) {
   const gltf = useGLTF(cratePath(rarity)) as unknown as { scene: THREE.Group };
-  const scene = useMemo(() => gltf.scene.clone(true), [gltf.scene]);
   const color = RARITY_COLOR[rarity];
+  const scene = useMemo(() => {
+    const clone = gltf.scene.clone(true);
+    clone.rotation.x = Math.PI / 2;
+    return clone;
+  }, [gltf.scene]);
 
   const parts = useMemo(() => {
-    const lids: Array<{ obj: THREE.Object3D; home: THREE.Vector3; dir: THREE.Vector3; rot: [number, number, number] }> = [];
+    const lids: Array<{
+      object: THREE.Object3D;
+      home: THREE.Vector3;
+      direction: THREE.Vector3;
+      rotation: [number, number, number];
+    }> = [];
     const seams: THREE.MeshStandardMaterial[] = [];
-    scene.traverse((o) => {
-      if (/^lid_q[1-4]$/.test(o.name)) {
-        const home = o.position.clone();
-        const dir = new THREE.Vector3(Math.sign(home.x || 0.5), 0.9, Math.sign(home.z || 0.5)).normalize();
-        lids.push({ obj: o, home, dir, rot: LID_ROT[o.name] ?? [1.5, 0.4, -1.1] });
+    const ownedMaterials = new Set<THREE.Material>();
+
+    scene.traverse((object) => {
+      if (/^lid_q[1-4]$/.test(object.name)) {
+        const home = object.position.clone();
+        // v2 is Z-up: X/Y point outward and -Z points upward after rotation.
+        const direction = new THREE.Vector3(
+          Math.sign(home.x || 0.5),
+          Math.sign(home.y || 0.5),
+          -0.9
+        ).normalize();
+        lids.push({
+          object,
+          home,
+          direction,
+          rotation: LID_ROT[object.name] ?? [1.5, 0.4, -1.1],
+        });
       }
-      const mesh = o as THREE.Mesh;
-      if (mesh.isMesh && /^seam_/.test(o.name)) {
-        const mats = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
-        for (const m of mats) {
-          const std = (m as THREE.MeshStandardMaterial).clone();
-          std.emissive = new THREE.Color(color);
-          std.toneMapped = false;
-          mesh.material = std;
-          seams.push(std);
+
+      const mesh = object as THREE.Mesh;
+      if (!mesh.isMesh) return;
+      const source = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
+      const materials = source.map((material) => {
+        const cloned = (material as THREE.MeshStandardMaterial).clone();
+        if (/^seam_|accent/i.test(`${object.name} ${cloned.name}`)) {
+          cloned.color = new THREE.Color(color);
+          cloned.emissive = new THREE.Color(color);
+          cloned.toneMapped = false;
+          seams.push(cloned);
         }
-      }
+        ownedMaterials.add(cloned);
+        return cloned;
+      });
+      mesh.material = Array.isArray(mesh.material) ? materials : materials[0];
+      mesh.castShadow = true;
+      mesh.receiveShadow = true;
     });
-    return { lids, seams };
+
+    return { lids, seams, ownedMaterials };
   }, [scene, color]);
 
   const group = useRef<THREE.Group>(null);
+
+  useEffect(() => {
+    return () => parts.ownedMaterials.forEach((material) => material.dispose());
+  }, [parts]);
 
   useFrame(({ clock }) => {
     const t = clock.elapsedTime;
@@ -103,7 +135,10 @@ function CrateModel({ rarity, phase, phaseT }: { rarity: Rarity; phase: Phase; p
       : phase === 'rumble' ? 1.8 + 3.2 * phaseT
       : phase === 'peak' || phase === 'freeze' ? 6.5
       : 12;
-    for (const s of parts.seams) s.emissiveIntensity = seamI * (0.9 + 0.1 * Math.sin(t * 14));
+    const pulse = seamI * (0.9 + 0.1 * Math.sin(t * 14));
+    parts.seams.forEach((material) => {
+      material.emissiveIntensity = pulse;
+    });
 
     // Shake during rumble/peak; explode on detonate; drift during decel/reveal.
     if (group.current) {
@@ -119,15 +154,19 @@ function CrateModel({ rarity, phase, phaseT }: { rarity: Rarity; phase: Phase; p
       phase === 'detonate' ? easeOutCubic(phaseT)
       : phase === 'decel' || phase === 'reveal' ? 1 + 0.15 * phaseT
       : 0;
-    for (const lid of parts.lids) {
+    parts.lids.forEach((lid) => {
       const d = explode * 1.4;
-      lid.obj.position.set(
-        lid.home.x + lid.dir.x * d,
-        lid.home.y + lid.dir.y * d * 1.2,
-        lid.home.z + lid.dir.z * d
+      lid.object.position.set(
+        lid.home.x + lid.direction.x * d,
+        lid.home.y + lid.direction.y * d,
+        lid.home.z + lid.direction.z * d * 1.2
       );
-      lid.obj.rotation.set(lid.rot[0] * explode, lid.rot[1] * explode, lid.rot[2] * explode);
-    }
+      lid.object.rotation.set(
+        lid.rotation[0] * explode,
+        lid.rotation[1] * explode,
+        lid.rotation[2] * explode
+      );
+    });
   });
 
   return (
@@ -316,3 +355,5 @@ export default function CrateCinematic({
     </div>
   );
 }
+
+RARITIES.forEach((rarity) => useGLTF.preload(cratePath(rarity)));

@@ -52,18 +52,18 @@ export const PITY = {
 /** Compound level -> capacity + upgrade cost (cost = OSR to REACH this level). */
 export const COMPOUND_LEVELS: Record<
   number,
-  { maxNodes: number; cratesPerDay: number; osrUpgradeCost: number; solFeeLamports: number }
+  { maxNodes: number; cratesPerDay: number; osrUpgradeCost: number; feeEth: number }
 > = {
-  1: { maxNodes: 2, cratesPerDay: 3, osrUpgradeCost: 0, solFeeLamports: 0 },
-  2: { maxNodes: 3, cratesPerDay: 4, osrUpgradeCost: 500, solFeeLamports: 1_000_000 },
-  3: { maxNodes: 3, cratesPerDay: 5, osrUpgradeCost: 1000, solFeeLamports: 1_000_000 },
-  4: { maxNodes: 4, cratesPerDay: 6, osrUpgradeCost: 2000, solFeeLamports: 1_000_000 },
-  5: { maxNodes: 4, cratesPerDay: 8, osrUpgradeCost: 4000, solFeeLamports: 1_000_000 },
-  6: { maxNodes: 5, cratesPerDay: 10, osrUpgradeCost: 8000, solFeeLamports: 1_000_000 },
-  7: { maxNodes: 5, cratesPerDay: 12, osrUpgradeCost: 15000, solFeeLamports: 1_000_000 },
-  8: { maxNodes: 6, cratesPerDay: 15, osrUpgradeCost: 25000, solFeeLamports: 1_000_000 },
-  9: { maxNodes: 7, cratesPerDay: 18, osrUpgradeCost: 40000, solFeeLamports: 1_000_000 },
-  10: { maxNodes: 8, cratesPerDay: 20, osrUpgradeCost: 60000, solFeeLamports: 1_000_000 },
+  1: { maxNodes: 2, cratesPerDay: 3, osrUpgradeCost: 0, feeEth: 0 },
+  2: { maxNodes: 3, cratesPerDay: 4, osrUpgradeCost: 500, feeEth: 0.00001 },
+  3: { maxNodes: 3, cratesPerDay: 5, osrUpgradeCost: 1000, feeEth: 0.00001 },
+  4: { maxNodes: 4, cratesPerDay: 6, osrUpgradeCost: 2000, feeEth: 0.00001 },
+  5: { maxNodes: 4, cratesPerDay: 8, osrUpgradeCost: 4000, feeEth: 0.00001 },
+  6: { maxNodes: 5, cratesPerDay: 10, osrUpgradeCost: 8000, feeEth: 0.00001 },
+  7: { maxNodes: 5, cratesPerDay: 12, osrUpgradeCost: 15000, feeEth: 0.00001 },
+  8: { maxNodes: 6, cratesPerDay: 15, osrUpgradeCost: 25000, feeEth: 0.00001 },
+  9: { maxNodes: 7, cratesPerDay: 18, osrUpgradeCost: 40000, feeEth: 0.00001 },
+  10: { maxNodes: 8, cratesPerDay: 20, osrUpgradeCost: 60000, feeEth: 0.00001 },
 };
 export const MAX_COMPOUND_LEVEL = 10;
 
@@ -90,14 +90,14 @@ export function levelMultiplier(level: number): number {
   return 5.0 + (level - 10) * 0.6;
 }
 
-// Fees & splits
+// Fees & splits — protocol fees denominated in ETH (Robinhood Chain gas token).
 export const CLAIM_FEE_BPS = 200; // 2% claim fee
 export const CLAIM_COOLDOWN_MS = 3_600_000; // 1h per wallet
 export const COMPOUND_REINVEST_FEE_BPS = 75; // 0.75% when compounding instead of claiming
-export const SOL_MINT_FEE_LAMPORTS = 50_000_000; // 0.05 SOL
-export const CRATE_SOL_FEE = 2_000_000;
-export const COMPOUND_SOL_FEE = 1_000_000;
-export const EXPEDITE_EXTRA_SOL = 1_000_000_000;
+export const MINT_FEE_ETH = 0.0002;
+export const CRATE_FEE_ETH = 0.00002;
+export const COMPOUND_FEE_ETH = 0.00001;
+export const EXPEDITE_FEE_ETH = 0.005;
 /** Mint OSR split. */
 export const MINT_BURN_BPS = 7000;
 export const MINT_TREASURY_BPS = 3000;
@@ -115,7 +115,7 @@ export interface NodeFamilyDef {
   burnCostOsr: number;
   burnShareBps: number;
   treasuryShareBps: number;
-  solMintFeeLamports: number;
+  mintFeeEth: number;
 }
 
 export const NODE_FAMILIES: NodeFamilyDef[] = [
@@ -127,7 +127,7 @@ export const NODE_FAMILIES: NodeFamilyDef[] = [
     burnCostOsr: 1000,
     burnShareBps: MINT_BURN_BPS,
     treasuryShareBps: MINT_TREASURY_BPS,
-    solMintFeeLamports: SOL_MINT_FEE_LAMPORTS,
+    mintFeeEth: MINT_FEE_ETH,
   },
   {
     key: 'mine_shaft',
@@ -137,7 +137,7 @@ export const NODE_FAMILIES: NodeFamilyDef[] = [
     burnCostOsr: 750,
     burnShareBps: MINT_BURN_BPS,
     treasuryShareBps: MINT_TREASURY_BPS,
-    solMintFeeLamports: SOL_MINT_FEE_LAMPORTS,
+    mintFeeEth: MINT_FEE_ETH,
   },
 ];
 
@@ -176,17 +176,15 @@ export function welcomeBoostFactor(joinedAtMs: number | null, nowMs: number): nu
   return 1 + 7 * (1 - t / WELCOME_BOOST_WINDOW_S);
 }
 
-/** Simulated rest-of-network grow-power so a local single player sees a live network. */
-export const SIM_NETWORK_GP = 40;
+/** No fabricated network participants. Only recorded player grow-power counts. */
+export const SIM_NETWORK_GP = 0;
 
 /** Storage cap = 12h of production. */
 export const STORAGE_CAP_SECONDS = 43_200;
 
-export const COMPOUND_COOLDOWN_MS = 12 * 3600 * 1000; // 12h, 1 SOL expedite skips
+export const COMPOUND_COOLDOWN_MS = 12 * 3600 * 1000; // 12h, expedite fee skips
 
 // xStock
 export const XSTOCK_MIN_COMPOUND_LEVEL = 5;
-export const AUTO_SWAP_ENABLED = true;
+export const AUTO_SWAP_ENABLED = false;
 export const XSTOCK_ACCRUAL_RATE = 0.01;
-
-export const STARTER_OSR = 2500;

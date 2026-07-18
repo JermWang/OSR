@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import PageShell from '@/components/ui/PageShell';
 import ComponentTile from '@/components/ui/ComponentTile';
+import NodePreview from '@/components/three/NodePreview';
 import { api, type InventoryItem, type NodeInfo, type UserOperation } from '@/lib/api-client';
 import { RARITY_MULT } from '@/lib/economy';
 import { NODE_SLOTS, RARITIES, SLOT_LABELS, rarityHex, type Rarity } from '@/lib/rarity';
@@ -392,22 +393,16 @@ export default function InventoryPage() {
                   </button>
                 </div>
 
-                {/* Preview placeholder (3D module swaps in later) */}
-                <div
-                  className="mx-auto mt-3 flex w-full max-w-[340px] flex-col items-center justify-center rounded-lg border border-ink-600"
-                  style={{
-                    height: 260,
-                    background:
-                      'radial-gradient(circle at 50% 40%, rgba(245,158,11,0.10), rgba(11,14,20,0.6) 70%)',
+                <NodePreview
+                  className="mx-auto mt-3 h-[260px] w-full max-w-[340px]"
+                  node={{
+                    id: node.id,
+                    type: node.type,
+                    level: node.level,
+                    isActive: node.isActive,
+                    components: node.components,
                   }}
-                >
-                  <span aria-hidden className="text-5xl">
-                    {node.type === 'oil' ? '⛽' : '⛏'}
-                  </span>
-                  <p className="mt-2 font-mono text-[10px] uppercase tracking-widest text-steel-500">
-                    3D preview loads on the Command page
-                  </p>
-                </div>
+                />
 
                 {/* 2×2 slot grid */}
                 <div className="mt-4 grid grid-cols-2 gap-2">

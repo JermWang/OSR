@@ -2,7 +2,7 @@
 // (reverse-engineered constants; 7-element arrays indexed by tier 0..6:
 // common, uncommon, rare, epic, legendary, mythic, divine).
 
-import { RARITIES, type Rarity, type NodeFamily } from '@/lib/rarity';
+import { RARITIES, type Rarity } from '@/lib/rarity';
 
 export const RARITY_ORDER = RARITIES;
 
@@ -105,14 +105,4 @@ export function levelTheme(levelIn: number): LevelTheme {
   if (level >= 4)
     return { era: 'reinforced', pigment: '#7d756a', pigmentTint: 0.12, metal: 0.46, rough: 0.54, emissive: 0.06, ring: 0.45, scale };
   return { era: 'rough', pigment: '#6a655c', pigmentTint: 0.18, metal: 0.18, rough: 0.82, emissive: 0, ring: 0, scale };
-}
-
-/** Level-based geometry unlocks shown in the world. */
-export function levelUnlocks(level: number, family: NodeFamily) {
-  return {
-    helipad: level >= 2,
-    derrickCrown: level >= 3 && family === 'oil',
-    secondShaft: level >= 7 && family === 'mine',
-    banner: level >= 10,
-  };
 }
