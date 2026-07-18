@@ -38,7 +38,7 @@ function Water({ color = '#123a52' }: { color?: string }) {
   });
   const uniforms = useMemo(() => ({ uTime: { value: 0 }, uColor: { value: new THREE.Color(color) } }), [color]);
   return (
-    <mesh position={[-33, -0.22, 0]} rotation={[-Math.PI / 2, 0, 0]}>
+    <mesh position={[-33, -0.32, 0]} rotation={[-Math.PI / 2, 0, 0]}>
       <planeGeometry args={[46, 130, 48, 48]} />
       <shaderMaterial
         ref={mat}
