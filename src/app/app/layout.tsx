@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import WalletButton from '@/components/ui/WalletButton';
 import DisclaimerModal from '@/components/ui/DisclaimerModal';
+import NavBar from '@/components/ui/NavBar';
 import { useEvmWallet } from '@/lib/evm';
 import { CHAIN, CONTRACTS_CONFIGURED } from '@/lib/config';
 
@@ -11,33 +12,38 @@ function OsrBalancePill() {
   const symbol = useEvmWallet((state) => state.osrSymbol);
   if (!CONTRACTS_CONFIGURED || osrBalance == null) return null;
   return (
-    <div className="hidden items-center gap-1 rounded border border-amber-500/40 bg-ink-800 px-3 py-1.5 font-mono text-xs text-amber-400 sm:flex">
+    <div className="hidden items-center gap-2 rounded-[10px] border border-amber-500/30 bg-ink-800 px-3 py-2 font-mono text-xs text-amber-300 sm:flex">
+      <span className="grid h-4 w-4 place-items-center rounded-full bg-gradient-to-br from-amber-100 via-amber-400 to-amber-700 text-[7px] text-[#3a1e05]">◆</span>
       {Number(osrBalance).toLocaleString(undefined, { maximumFractionDigits: 2 })}{' '}
-      <span className="text-steel-400">{symbol}</span>
+      <span className="text-[10px] text-steel-500">{symbol}</span>
     </div>
   );
 }
 
 export default function AppLayout({ children }: { children: React.ReactNode }) {
   return (
-    <div className="flex min-h-screen flex-col bg-ink-900">
-      <div className="border-b border-emerald-500/30 bg-emerald-500/10 py-1 text-center font-mono text-[11px] uppercase tracking-widest text-emerald-400">
-        {CHAIN.name} — Mainnet · chain {CHAIN.id}
+    <div className="app-surface flex min-h-screen flex-col">
+      <div className="border-b border-emerald-500/20 bg-gradient-to-r from-transparent via-emerald-500/10 to-transparent py-1 text-center font-mono text-[10px] uppercase tracking-[.22em] text-emerald-400">
+        <span className="mr-2 inline-block h-1.5 w-1.5 rounded-full bg-emerald-400 shadow-[0_0_8px_#34d399]" />
+        {CHAIN.name} — Mainnet · chain {CHAIN.id} · gas ETH
       </div>
-      <header className="sticky top-0 z-40 flex items-center gap-3 border-b border-ink-600 bg-ink-900/95 px-4 py-2 backdrop-blur">
-        <Link href="/" className="flex items-center gap-2">
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src="/logo.jpg" alt="OSR" className="h-7 w-7 rounded" />
-          <span className="font-mono text-lg font-bold tracking-widest text-amber-500">OSR</span>
-          <span className="hidden text-xs uppercase tracking-widest text-steel-400 sm:inline">
-            Oil Strategic Reserve
-          </span>
-        </Link>
-        <div className="ml-auto flex items-center gap-2">
-          <OsrBalancePill />
-          <WalletButton />
-        </div>
-      </header>
+      <div className="sticky top-0 z-40 border-b border-white/[.07] bg-[#080b12]/90 shadow-[0_18px_50px_-34px_rgba(0,0,0,.95)] backdrop-blur-xl">
+        <header className="flex items-center gap-3 border-b border-white/[.07] px-4 py-2.5 md:px-[22px]">
+          <Link href="/" className="flex items-center gap-2.5">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src="/logo.jpg" alt="OSR" className="h-[34px] w-[34px] rounded-[10px] shadow-[0_0_0_1px_rgba(245,166,35,.4),0_6px_18px_-6px_rgba(245,166,35,.5)]" />
+            <span className="leading-none">
+              <span className="gold-text block font-mono text-[17px] font-bold tracking-[.28em]">OSR</span>
+              <span className="mt-1 hidden font-mono text-[8px] uppercase tracking-[.3em] text-steel-500 sm:block">Oil Strategic Reserve</span>
+            </span>
+          </Link>
+          <div className="ml-auto flex items-center gap-2">
+            <OsrBalancePill />
+            <WalletButton />
+          </div>
+        </header>
+        <NavBar />
+      </div>
       <div className="flex-1">{children}</div>
       <DisclaimerModal />
     </div>

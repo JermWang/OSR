@@ -1,6 +1,10 @@
 import type { Metadata, Viewport } from 'next';
+import { JetBrains_Mono, Space_Grotesk } from 'next/font/google';
 import './globals.css';
 import PrivyAppProvider from '@/components/providers/PrivyAppProvider';
+
+const displayFont = Space_Grotesk({ subsets: ['latin'], variable: '--font-display', display: 'swap' });
+const monoFont = JetBrains_Mono({ subsets: ['latin'], variable: '--font-mono', display: 'swap' });
 
 export const metadata: Metadata = {
   title: 'OSR — Oil Strategic Reserve',
@@ -19,7 +23,7 @@ export const viewport: Viewport = {
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en" suppressHydrationWarning>
-      <body>
+      <body className={`${displayFont.variable} ${monoFont.variable}`}>
         <PrivyAppProvider>{children}</PrivyAppProvider>
       </body>
     </html>

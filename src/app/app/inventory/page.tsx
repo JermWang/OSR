@@ -148,7 +148,7 @@ export default function InventoryPage() {
   );
 
   return (
-    <PageShell title="Component Inventory" backHref="/app" backLabel="← Command" maxWidth="max-w-7xl">
+    <PageShell title="Component Inventory" subtitle="Equip rarity-tiered parts across your nodes to raise grow-power." backHref="/app" backLabel="← Command" maxWidth="max-w-7xl">
       {!wallet ? (
         <p className="text-sm text-steel-400">Connect a wallet from the Command Center first.</p>
       ) : !loaded ? (

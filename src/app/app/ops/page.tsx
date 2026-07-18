@@ -29,7 +29,7 @@ export default function OpsPage() {
   }, [load]);
 
   return (
-    <PageShell title="My Operations">
+    <PageShell title="My Operations" subtitle="Track active nodes, pending rewards, and compound performance." maxWidth="max-w-6xl">
       {!wallet ? (
         <p className="text-sm text-steel-400">Connect a wallet from Command Center first.</p>
       ) : loading && !op ? (

@@ -84,7 +84,7 @@ export default function ProfilePage() {
   }, [wallet, load]);
 
   return (
-    <PageShell title="Operator Profile">
+    <PageShell title="Operator Profile" subtitle="Your persistent identity, progression, and transaction history." maxWidth="max-w-6xl">
       {!wallet ? (
         <div className="panel p-6 text-sm text-steel-300">
           Sign in with Privy or link an external wallet to load your persistent online profile.

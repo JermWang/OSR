@@ -11,23 +11,26 @@ import { Compound, type LightingPreset, nodePosition } from './Compound';
 import type { RigNodeData } from './NodeRig';
 import type { OrbitControls as OrbitControlsImpl } from 'three-stdlib';
 
-function CameraRig({ focus }: { focus: [number, number, number] | null }) {
+function CameraRig({ focus, landing = false }: { focus: [number, number, number] | null; landing?: boolean }) {
   const controls = useRef<OrbitControlsImpl>(null);
   const { camera } = useThree();
-  const desiredTarget = useRef(new THREE.Vector3(-2, 2, -6));
-  const desiredPosition = useRef(new THREE.Vector3(1, 22, 36));
+  const desiredTarget = useRef(new THREE.Vector3(-2, landing ? 2.6 : 2, landing ? -11 : -6));
+  const desiredPosition = useRef(new THREE.Vector3(landing ? 1 : 1, landing ? 9.5 : 22, landing ? 15 : 36));
   const transitioning = useRef(false);
 
   useEffect(() => {
     if (focus) {
       desiredTarget.current.set(focus[0], 3.2, focus[2]);
       desiredPosition.current.set(focus[0] + 12, 10, focus[2] + 14);
+    } else if (landing) {
+      desiredTarget.current.set(-2, 2.6, -11);
+      desiredPosition.current.set(1, 9.5, 15);
     } else {
       desiredTarget.current.set(-2, 2, -6);
       desiredPosition.current.set(1, 22, 36);
     }
     transitioning.current = true;
-  }, [focus]);
+  }, [focus, landing]);
 
   useFrame((_, delta) => {
     const c = controls.current;
@@ -103,13 +106,16 @@ export default function Scene({
   selectedNodeId,
   onSelect,
   focusNodeId,
+  variant = 'default',
 }: {
   nodes: RigNodeData[];
   preset: LightingPreset;
   selectedNodeId?: string | null;
   onSelect?: (id: string) => void;
   focusNodeId?: string | null;
+  variant?: 'default' | 'landing';
 }) {
+  const landing = variant === 'landing';
   const focus = (() => {
     const requestedId = focusNodeId === undefined ? selectedNodeId : focusNodeId;
     if (!requestedId) return null;
@@ -126,13 +132,13 @@ export default function Scene({
     <Canvas
       shadows="soft"
       dpr={[1, 2]}
-      camera={{ position: [1, 22, 36], fov: 44, near: 0.1, far: 260 }}
+      camera={{ position: landing ? [1, 9.5, 15] : [1, 22, 36], fov: landing ? 42 : 44, near: 0.1, far: 260 }}
       gl={{
         antialias: true,
         alpha: false,
         powerPreference: 'high-performance',
         toneMapping: THREE.ACESFilmicToneMapping,
-        toneMappingExposure: 1.08,
+        toneMappingExposure: landing ? 1.28 : 1.08,
       }}
       onCreated={({ gl }) => {
         gl.outputColorSpace = THREE.SRGBColorSpace;
@@ -141,7 +147,7 @@ export default function Scene({
     >
       <Suspense fallback={<LoadingCompound />}>
         <Compound nodes={nodes} preset={preset} selectedNodeId={selectedNodeId} onSelect={onSelect} />
-        <CameraRig focus={focus} />
+        <CameraRig focus={focus} landing={landing} />
       </Suspense>
     </Canvas>
   );

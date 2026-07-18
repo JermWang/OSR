@@ -29,7 +29,7 @@ export default function MarketPage() {
   }, [load]);
 
   return (
-    <PageShell title="Market Room">
+    <PageShell title="Market Room" subtitle="Live reserve and production signals from Robinhood Chain." maxWidth="max-w-6xl">
       {loading && !overview ? (
         <p className="text-sm text-steel-400">Loading…</p>
       ) : error ? (

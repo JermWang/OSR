@@ -7,7 +7,6 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useOperation } from '@/lib/useOperation';
 import { api, type CrateResult, type NodeInfo } from '@/lib/api-client';
 import { useWalletStore } from '@/lib/store';
-import NavBar from '@/components/ui/NavBar';
 import { COMPONENT_RARITIES, NODE_SLOTS, SLOT_LABELS, type Rarity } from '@/lib/rarity';
 import { RARITY_MULT, getCrateCost, WELCOME_BOOST_WINDOW_S } from '@/lib/economy';
 import { SHOWROOM_NODES, type LightingPreset } from '@/components/three/Compound';
@@ -168,7 +167,6 @@ export default function CommandPage() {
   if (!storeWallet) {
     return (
       <div className="mx-auto max-w-3xl p-6">
-        <div className="mb-4"><NavBar /></div>
         <div className="panel flex flex-col items-center gap-3 p-10 text-center">
           <div className="font-mono text-sm uppercase tracking-widest text-amber-500">
             Sign in to create your OSR wallet
@@ -184,10 +182,9 @@ export default function CommandPage() {
   }
 
   return (
-    <div className="flex h-[calc(100vh-92px)] flex-col md:flex-row">
+    <div className="mx-auto flex min-h-[calc(100vh-136px)] max-w-[1560px] flex-col gap-[18px] p-4 md:grid md:grid-cols-[378px_minmax(0,1fr)] md:items-start md:px-[22px] md:py-5">
       {/* Sidebar */}
-      <aside className="flex w-full flex-col gap-3 overflow-y-auto border-r border-ink-600 p-3 md:w-[360px]">
-        <NavBar />
+      <aside className="flex w-full flex-col gap-[14px] md:max-h-[calc(100vh-176px)] md:overflow-y-auto md:pr-1">
 
         {!ONCHAIN_ENABLED && (
           <div className="rounded border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs leading-relaxed text-amber-200">
@@ -220,6 +217,16 @@ export default function CommandPage() {
                 {op?.compound.cratesPerDay ?? 3} crates per family / day
               </div>
             </div>
+          </div>
+          <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-ink-700">
+            <div
+              className="h-full rounded-full bg-gradient-to-r from-amber-600 to-amber-300 shadow-[0_0_12px_rgba(245,166,35,.5)] transition-all"
+              style={{ width: `${Math.min(100, (nodes.length / Math.max(1, totalCapacity)) * 100)}%` }}
+            />
+          </div>
+          <div className="mt-1.5 flex justify-between font-mono text-[10px] text-steel-500">
+            <span>{nodes.length} / {totalCapacity} nodes online</span>
+            <span>Next: L{Math.min(10, (op?.level ?? 1) + 1)}</span>
           </div>
         </div>
 
@@ -343,7 +350,7 @@ export default function CommandPage() {
       </aside>
 
       {/* 3D scene */}
-      <div className="relative min-h-[360px] flex-1">
+      <div className="relative min-h-[520px] overflow-hidden rounded-[18px] border border-white/[.08] bg-ink-800 shadow-[0_1px_0_rgba(255,255,255,.045)_inset,0_24px_60px_-32px_rgba(0,0,0,.95)] md:min-h-[660px]">
         <Scene
           nodes={sceneNodes}
           preset={preset}

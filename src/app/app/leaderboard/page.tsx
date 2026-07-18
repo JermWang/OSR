@@ -78,7 +78,7 @@ export default function LeaderboardPage() {
   const rest = rows.slice(3, 100);
 
   return (
-    <PageShell title="Leaderboard">
+    <PageShell title="Leaderboard" subtitle="Global operator rankings · updates in real time." maxWidth="max-w-7xl">
       <div className="space-y-6">
         {/* Metric tabs */}
         <div className="flex gap-2 overflow-x-auto pb-1">

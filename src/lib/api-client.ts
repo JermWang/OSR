@@ -135,9 +135,16 @@ async function request<T>(path: string, opts?: RequestInit): Promise<T> {
   const timeout = controller ? window.setTimeout(() => controller.abort(), 15_000) : null;
   let res: Response;
   try {
-    const [accessToken, identityToken] = PRIVY_CONFIGURED
-      ? await Promise.all([getAccessToken(), getIdentityToken()])
-      : [null, null];
+    let accessToken: string | null = null;
+    let identityToken: string | null = null;
+    if (PRIVY_CONFIGURED) {
+      try {
+        [accessToken, identityToken] = await Promise.all([getAccessToken(), getIdentityToken()]);
+      } catch {
+        // Public reads remain available before sign-in. Protected endpoints
+        // still reject the request server-side when these headers are absent.
+      }
+    }
     res = await fetch(`/api${path}`, {
       ...opts,
       signal: opts?.signal ?? controller?.signal,

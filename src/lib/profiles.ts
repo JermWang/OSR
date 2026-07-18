@@ -1,5 +1,10 @@
 import type { UserOperation } from './api-client';
-import { getServerSupabase, supabaseConfigured } from './supabase';
+import {
+  getPublicServerSupabase,
+  getServerSupabase,
+  publicSupabaseConfigured,
+  supabaseConfigured,
+} from './supabase';
 
 export type LeaderboardMetric = 'compound_level' | 'total_produced' | 'total_burned';
 
@@ -97,8 +102,8 @@ export async function touchGlobalProfile(wallet: string, operation?: UserOperati
 }
 
 export async function getGlobalProfile(wallet: string): Promise<GlobalProfile | null> {
-  if (!supabaseConfigured()) return null;
-  const { data, error } = await getServerSupabase()
+  if (!publicSupabaseConfigured()) return null;
+  const { data, error } = await getPublicServerSupabase()
     .from('profiles')
     .select('*')
     .eq('wallet', wallet.toLowerCase())
@@ -108,8 +113,8 @@ export async function getGlobalProfile(wallet: string): Promise<GlobalProfile | 
 }
 
 export async function getActivityHistory(wallet: string, limit = 50): Promise<ActivityItem[]> {
-  if (!supabaseConfigured()) return [];
-  const { data, error } = await getServerSupabase()
+  if (!publicSupabaseConfigured()) return [];
+  const { data, error } = await getPublicServerSupabase()
     .from('activity_history')
     .select('id,wallet,event_type,source,amount,asset_symbol,tx_hash,metadata,created_at')
     .eq('wallet', wallet.toLowerCase())
@@ -149,14 +154,14 @@ export async function recordActivity(
 }
 
 export async function globalLeaderboard(metric: LeaderboardMetric) {
-  if (!supabaseConfigured()) return null;
+  if (!publicSupabaseConfigured()) return null;
   const column =
     metric === 'total_produced'
       ? 'total_produced'
       : metric === 'total_burned'
         ? 'total_burned'
         : 'compound_level';
-  const { data, error } = await getServerSupabase()
+  const { data, error } = await getPublicServerSupabase()
     .from('profiles')
     .select('*')
     .order(column, { ascending: false })
@@ -184,7 +189,7 @@ export async function globalLeaderboard(metric: LeaderboardMetric) {
 export async function profileBundle(wallet: string) {
   const profile = await getGlobalProfile(wallet);
   return {
-    configured: supabaseConfigured(),
+    configured: publicSupabaseConfigured(),
     profile,
     history: profile ? await getActivityHistory(wallet) : [],
   };
