@@ -1,0 +1,18 @@
+# deps / build
+node_modules/
+.next/
+out/
+*.tsbuildinfo
+
+# local data
+data/
+*.db
+*.db-journal
+.env*.local
+
+# source art (heavy; web-ready copies live in public/)
+ORS MODELS/
+
+# misc
+.DS_Store
+Thumbs.db

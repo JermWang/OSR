@@ -1,0 +1,192 @@
+// OSR economy constants — matched to the original deployment's reverse-
+// engineered tables (see README + guide page for the player-facing versions).
+
+import type { Rarity } from './rarity';
+
+export const RARITY_MULT: Record<Rarity, number> = {
+  common: 1,
+  uncommon: 1.8,
+  rare: 3,
+  epic: 10,
+  legendary: 50,
+  mythic: 300,
+  divine: 3000,
+};
+
+/** Per-component grow-power boost stack (Formula D). */
+export const RARITY_BOOST: Record<Rarity, number> = {
+  common: 1,
+  uncommon: 1,
+  rare: 1,
+  epic: 1.05,
+  legendary: 1.15,
+  mythic: 1.4,
+  divine: 2,
+};
+
+/** Base crate drop weights (percent). */
+export const DROP_WEIGHTS: Record<Rarity, number> = {
+  common: 47.9,
+  uncommon: 25,
+  rare: 15,
+  epic: 8,
+  legendary: 3,
+  mythic: 1,
+  divine: 0.1,
+};
+
+/** Rarity pools unlock with compound level. */
+export const RARITY_UNLOCK_LEVEL: Partial<Record<Rarity, number>> = {
+  legendary: 4,
+  mythic: 6,
+  divine: 8,
+};
+
+/** Bad-luck protection ("crates since" thresholds). */
+export const PITY = {
+  legendary: { soft: 20, hard: 30, rampMax: 4 },
+  mythic: { soft: 100, hard: 150, rampMax: 4 },
+  divine: { soft: null as number | null, hard: 1500, rampMax: 1 },
+};
+
+/** Compound level -> capacity + upgrade cost (cost = OSR to REACH this level). */
+export const COMPOUND_LEVELS: Record<
+  number,
+  { maxNodes: number; cratesPerDay: number; osrUpgradeCost: number; solFeeLamports: number }
+> = {
+  1: { maxNodes: 2, cratesPerDay: 3, osrUpgradeCost: 0, solFeeLamports: 0 },
+  2: { maxNodes: 3, cratesPerDay: 4, osrUpgradeCost: 500, solFeeLamports: 1_000_000 },
+  3: { maxNodes: 3, cratesPerDay: 5, osrUpgradeCost: 1000, solFeeLamports: 1_000_000 },
+  4: { maxNodes: 4, cratesPerDay: 6, osrUpgradeCost: 2000, solFeeLamports: 1_000_000 },
+  5: { maxNodes: 4, cratesPerDay: 8, osrUpgradeCost: 4000, solFeeLamports: 1_000_000 },
+  6: { maxNodes: 5, cratesPerDay: 10, osrUpgradeCost: 8000, solFeeLamports: 1_000_000 },
+  7: { maxNodes: 5, cratesPerDay: 12, osrUpgradeCost: 15000, solFeeLamports: 1_000_000 },
+  8: { maxNodes: 6, cratesPerDay: 15, osrUpgradeCost: 25000, solFeeLamports: 1_000_000 },
+  9: { maxNodes: 7, cratesPerDay: 18, osrUpgradeCost: 40000, solFeeLamports: 1_000_000 },
+  10: { maxNodes: 8, cratesPerDay: 20, osrUpgradeCost: 60000, solFeeLamports: 1_000_000 },
+};
+export const MAX_COMPOUND_LEVEL = 10;
+
+/** Mining Shafts add bonus node slots at higher compound levels. */
+export function getShaftBonusSlots(level: number): number {
+  if (level >= 9) return 4;
+  if (level >= 7) return 3;
+  if (level >= 5) return 2;
+  return 0;
+}
+
+/** Crate cost scales with compound level: 500 OSR at L1 -> 1625 at L10. */
+export function getCrateCost(level: number): number {
+  return Math.floor(500 * (1 + 0.25 * (level - 1)));
+}
+
+/** Node level -> production multiplier (L11+ extrapolates +0.6/level). */
+export function levelMultiplier(level: number): number {
+  const TABLE: Record<number, number> = {
+    1: 1.0, 2: 1.25, 3: 1.55, 4: 1.9, 5: 2.3,
+    6: 2.75, 7: 3.25, 8: 3.8, 9: 4.4, 10: 5.0,
+  };
+  if (level <= 10) return TABLE[Math.max(1, level)];
+  return 5.0 + (level - 10) * 0.6;
+}
+
+// Fees & splits
+export const CLAIM_FEE_BPS = 200; // 2% claim fee
+export const CLAIM_COOLDOWN_MS = 3_600_000; // 1h per wallet
+export const COMPOUND_REINVEST_FEE_BPS = 75; // 0.75% when compounding instead of claiming
+export const SOL_MINT_FEE_LAMPORTS = 50_000_000; // 0.05 SOL
+export const CRATE_SOL_FEE = 2_000_000;
+export const COMPOUND_SOL_FEE = 1_000_000;
+export const EXPEDITE_EXTRA_SOL = 1_000_000_000;
+/** Mint OSR split. */
+export const MINT_BURN_BPS = 7000;
+export const MINT_TREASURY_BPS = 3000;
+/** Upgrade & crate OSR split: burn / reserve / treasury. */
+export const SPLIT_BURN_BPS = 5000;
+export const SPLIT_RESERVE_BPS = 3000;
+export const SPLIT_TREASURY_BPS = 2000;
+
+// Node families
+export interface NodeFamilyDef {
+  key: 'oil_rig' | 'mine_shaft';
+  name: string;
+  description: string;
+  family: 'oil' | 'mine';
+  burnCostOsr: number;
+  burnShareBps: number;
+  treasuryShareBps: number;
+  solMintFeeLamports: number;
+}
+
+export const NODE_FAMILIES: NodeFamilyDef[] = [
+  {
+    key: 'oil_rig',
+    name: 'Oil Rig',
+    description: 'Offshore platform on the water quadrant. Earns OSR, claim-only in v1 · unlocks xStock dividends at compound L5+.',
+    family: 'oil',
+    burnCostOsr: 1000,
+    burnShareBps: MINT_BURN_BPS,
+    treasuryShareBps: MINT_TREASURY_BPS,
+    solMintFeeLamports: SOL_MINT_FEE_LAMPORTS,
+  },
+  {
+    key: 'mine_shaft',
+    name: 'Mining Shaft',
+    description: 'Underground operation on the land quadrant. Earns OSR, compoundable at a reduced 0.75% fee · bonus node slots at L5/L7/L9.',
+    family: 'mine',
+    burnCostOsr: 750,
+    burnShareBps: MINT_BURN_BPS,
+    treasuryShareBps: MINT_TREASURY_BPS,
+    solMintFeeLamports: SOL_MINT_FEE_LAMPORTS,
+  },
+];
+
+// Emission — Bitcoin-style halving curve.
+export const TOTAL_SUPPLY = 229_000_000; // pre-minted, mint authority revoked
+export const GENESIS_RATE_PER_SEC = 262; // OSR/sec at genesis
+export const HALVING_PERIOD_MS = 7 * 24 * 3600 * 1000; // halves weekly
+export const SHARE_CAP = 0.3; // no user captures more than 30% of emission
+
+export function emissionRateAt(genesisMs: number, nowMs: number): number {
+  const cycle = Math.max(0, Math.floor((nowMs - genesisMs) / HALVING_PERIOD_MS));
+  return GENESIS_RATE_PER_SEC / 2 ** cycle;
+}
+
+export function halvingInfo(genesisMs: number, nowMs: number) {
+  const cycleIndex = Math.max(0, Math.floor((nowMs - genesisMs) / HALVING_PERIOD_MS));
+  const cycleStart = genesisMs + cycleIndex * HALVING_PERIOD_MS;
+  const nextHalvingMs = cycleStart + HALVING_PERIOD_MS;
+  const currentRatePerSec = GENESIS_RATE_PER_SEC / 2 ** cycleIndex;
+  return {
+    cycleIndex,
+    nextHalvingMs,
+    currentRatePerSec,
+    nextRatePerSec: currentRatePerSec / 2,
+    cycleProgress: (nowMs - cycleStart) / HALVING_PERIOD_MS,
+  };
+}
+
+// Welcome boost: 8x -> 1x linearly over 72h from first mint.
+export const WELCOME_BOOST_WINDOW_S = 259_200;
+
+export function welcomeBoostFactor(joinedAtMs: number | null, nowMs: number): number {
+  if (!joinedAtMs) return 1;
+  const t = Math.max(0, (nowMs - joinedAtMs) / 1000);
+  if (t >= WELCOME_BOOST_WINDOW_S) return 1;
+  return 1 + 7 * (1 - t / WELCOME_BOOST_WINDOW_S);
+}
+
+/** Simulated rest-of-network grow-power so a local single player sees a live network. */
+export const SIM_NETWORK_GP = 40;
+
+/** Storage cap = 12h of production. */
+export const STORAGE_CAP_SECONDS = 43_200;
+
+export const COMPOUND_COOLDOWN_MS = 12 * 3600 * 1000; // 12h, 1 SOL expedite skips
+
+// xStock
+export const XSTOCK_MIN_COMPOUND_LEVEL = 5;
+export const AUTO_SWAP_ENABLED = true;
+export const XSTOCK_ACCRUAL_RATE = 0.01;
+
+export const STARTER_OSR = 2500;

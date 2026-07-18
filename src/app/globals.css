@@ -1,0 +1,78 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --font-display: 'Segoe UI', system-ui, sans-serif;
+  --font-mono: 'Cascadia Code', ui-monospace, 'SF Mono', monospace;
+
+  /* Sunset theme (default) */
+  --accent: #f59e0b;
+  --accent-soft: rgba(245, 158, 11, 0.15);
+  --sky-a: #2b1a3a;
+  --sky-b: #a3423c;
+}
+
+[data-theme='noon'] {
+  --accent: #38bdf8;
+  --accent-soft: rgba(56, 189, 248, 0.15);
+  --sky-a: #12304a;
+  --sky-b: #3a7ca5;
+}
+
+[data-theme='midnight'] {
+  --accent: #a78bfa;
+  --accent-soft: rgba(167, 139, 250, 0.15);
+  --sky-a: #0a0a1e;
+  --sky-b: #1e1b4b;
+}
+
+html,
+body {
+  height: 100%;
+}
+
+body {
+  @apply bg-ink-900 text-steel-200 antialiased;
+  font-family: var(--font-display);
+}
+
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  @apply rounded bg-steel-600;
+}
+
+.panel {
+  @apply rounded-lg border border-ink-600 bg-ink-800/80 backdrop-blur;
+}
+
+.stat-label {
+  @apply font-mono text-[11px] uppercase tracking-widest text-steel-400;
+}
+
+.btn-primary {
+  @apply rounded bg-amber-500 px-4 py-2 font-semibold text-ink-900 transition hover:bg-amber-400 disabled:cursor-not-allowed disabled:opacity-40;
+}
+
+.btn-secondary {
+  @apply rounded border border-steel-500/60 px-4 py-2 font-semibold text-steel-200 transition hover:border-steel-400 hover:bg-ink-700/60 disabled:cursor-not-allowed disabled:opacity-40;
+}
+
+@keyframes pulse-glow {
+  0%,
+  100% {
+    opacity: 0.6;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+.animate-pulse-glow {
+  animation: pulse-glow 2.4s ease-in-out infinite;
+}
