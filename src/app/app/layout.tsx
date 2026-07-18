@@ -23,7 +23,7 @@ function OsrBalancePill() {
 export default function AppLayout({ children }: { children: React.ReactNode }) {
   return (
     <div className="app-surface flex min-h-screen flex-col">
-      <div className="border-b border-emerald-500/20 bg-gradient-to-r from-transparent via-emerald-500/10 to-transparent py-1 text-center font-mono text-[10px] uppercase tracking-[.22em] text-emerald-400">
+      <div className="border-b border-emerald-500/20 bg-gradient-to-r from-transparent via-emerald-500/10 to-transparent py-[5px] text-center font-mono text-[10.5px] uppercase tracking-[.24em] text-emerald-400">
         <span className="mr-2 inline-block h-1.5 w-1.5 rounded-full bg-emerald-400 shadow-[0_0_8px_#34d399]" />
         {CHAIN.name} — Mainnet · chain {CHAIN.id} · gas ETH
       </div>
@@ -33,8 +33,8 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img src="/logo.jpg" alt="OSR" className="h-[34px] w-[34px] rounded-[10px] shadow-[0_0_0_1px_rgba(245,166,35,.4),0_6px_18px_-6px_rgba(245,166,35,.5)]" />
             <span className="leading-none">
-              <span className="gold-text block font-mono text-[17px] font-bold tracking-[.28em]">OSR</span>
-              <span className="mt-1 hidden font-mono text-[8px] uppercase tracking-[.3em] text-steel-500 sm:block">Oil Strategic Reserve</span>
+              <span className="gold-text block font-mono text-[18px] font-bold tracking-[.28em]">OSR</span>
+              <span className="mt-0.5 hidden font-mono text-[8.5px] uppercase tracking-[.34em] text-steel-500 sm:block">Oil Strategic Reserve</span>
             </span>
           </Link>
           <div className="ml-auto flex items-center gap-2">

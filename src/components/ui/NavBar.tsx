@@ -34,14 +34,14 @@ export default function NavBar() {
 
   return (
     <>
-      <nav className="hidden items-center gap-1 overflow-x-auto px-[22px] py-2 md:flex" aria-label="Primary navigation">
+      <nav className="hidden items-center gap-[3px] overflow-x-auto px-[22px] py-[9px] md:flex" aria-label="Primary navigation">
         {LINKS.map(({ href, label, Icon }) => {
           const active = pathname === href;
           return (
             <Link
               key={href}
               href={href}
-              className={`flex shrink-0 items-center gap-1.5 rounded-[9px] border px-3 py-2 font-mono text-[10px] font-semibold uppercase tracking-[.12em] transition ${
+              className={`flex shrink-0 items-center gap-[7px] rounded-[9px] border px-[13px] py-2 font-mono text-[11px] font-semibold uppercase tracking-[.12em] transition ${
                 active
                   ? 'border-amber-500/40 bg-amber-500/15 text-amber-300'
                   : 'border-transparent text-steel-300 hover:text-amber-300'
