@@ -10,14 +10,20 @@ import os from 'os';
 
 let db: DatabaseSync | null = null;
 
+/** Resolve the SQLite directory. Explicit override wins so tests can isolate. */
+export function resolveDataDir(): string {
+  if (process.env.OSR_DATA_DIR) return process.env.OSR_DATA_DIR;
+  // Vercel functions run from a read-only /var/task bundle. NOTE: os.tmpdir()
+  // there is per-invocation and ephemeral — fine while writes are locked and
+  // this is only an empty compatibility read, but it is NOT durable storage.
+  // Durable multi-instance persistence must land before writes are unlocked.
+  if (process.env.VERCEL) return path.join(os.tmpdir(), 'osr');
+  return path.join(process.cwd(), 'data');
+}
+
 export function getDb(): DatabaseSync {
   if (db) return db;
-  // Vercel functions run from a read-only /var/task bundle. Mainnet writes are
-  // locked elsewhere until audited contracts ship, so the legacy local engine
-  // is only an empty compatibility read there and belongs in writable /tmp.
-  const dir = process.env.VERCEL
-    ? path.join(os.tmpdir(), 'osr')
-    : path.join(process.cwd(), 'data');
+  const dir = resolveDataDir();
   fs.mkdirSync(dir, { recursive: true });
   db = new DatabaseSync(path.join(dir, 'osr.db'));
   db.exec('PRAGMA journal_mode = WAL;');

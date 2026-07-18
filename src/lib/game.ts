@@ -36,6 +36,7 @@ import {
   XSTOCK_MIN_COMPOUND_LEVEL,
   XSTOCK_ACCRUAL_RATE,
   TOTAL_SUPPLY,
+  STARTER_OSR_GRANT,
 } from './economy';
 import { NODE_SLOTS, RARITIES, type NodeFamily, type Rarity } from './rarity';
 import { CONTRACTS_CONFIGURED } from './config';
@@ -123,9 +124,21 @@ export function getOrCreateUser(wallet: string): UserRow {
   let user = db.prepare('SELECT * FROM users WHERE wallet = ?').get(wallet) as unknown as UserRow | undefined;
   if (!user) {
     const now = Date.now();
+    // Seed the starter grant so a fresh wallet can afford its first node, and
+    // mark dripped so it is credited exactly once per wallet.
     db.prepare(
-      'INSERT OR IGNORE INTO users (wallet, osr_balance, created_at, last_seen, dripped) VALUES (?,?,?,?,0)'
-    ).run(wallet, 0, now, now);
+      'INSERT OR IGNORE INTO users (wallet, osr_balance, created_at, last_seen, dripped) VALUES (?,?,?,?,1)'
+    ).run(wallet, STARTER_OSR_GRANT, now, now);
+    user = db.prepare('SELECT * FROM users WHERE wallet = ?').get(wallet) as unknown as UserRow;
+    if (STARTER_OSR_GRANT > 0) addLedger(wallet, 'starter_grant', STARTER_OSR_GRANT, {});
+  } else if (!user.dripped) {
+    // Wallet predates the starter grant — credit it once and flag it.
+    db.prepare('UPDATE users SET osr_balance = osr_balance + ?, dripped = 1 WHERE wallet = ?').run(
+      STARTER_OSR_GRANT,
+      wallet
+    );
+    addLedger(wallet, 'starter_grant', STARTER_OSR_GRANT, {});
+    db.prepare('UPDATE users SET last_seen = ? WHERE wallet = ?').run(Date.now(), wallet);
     user = db.prepare('SELECT * FROM users WHERE wallet = ?').get(wallet) as unknown as UserRow;
   } else {
     db.prepare('UPDATE users SET last_seen = ? WHERE wallet = ?').run(Date.now(), wallet);
@@ -188,6 +201,54 @@ function nodeGp(node: NodeRow, comps: ComponentRow[]): number {
   return levelMultiplier(node.level) * componentMultiplier(comps);
 }
 
+/**
+ * Total grow power across every node in the protocol, all wallets included.
+ *
+ * This is the emission denominator. It must be the whole network, not one
+ * wallet: with a per-wallet denominator the share ratio is always 1, so every
+ * operator pins to SHARE_CAP forever and node count, level, and gear stop
+ * affecting emission share entirely.
+ *
+ * Cached briefly because settleUser runs on every read path.
+ */
+let networkGpCache: { value: number; at: number } | null = null;
+const NETWORK_GP_TTL_MS = 5_000;
+
+export function networkGrowPower(now = Date.now()): number {
+  if (networkGpCache && now - networkGpCache.at < NETWORK_GP_TTL_MS) {
+    return networkGpCache.value;
+  }
+  const rows = getDb()
+    .prepare(
+      `SELECT n.id AS id, n.level AS level, c.rarity AS rarity
+         FROM nodes n
+         LEFT JOIN components c ON c.equipped_node_id = n.id`
+    )
+    .all() as unknown as Array<{ id: number; level: number; rarity: Rarity | null }>;
+
+  const byNode = new Map<number, { level: number; comps: { rarity: Rarity }[] }>();
+  for (const r of rows) {
+    let entry = byNode.get(r.id);
+    if (!entry) {
+      entry = { level: r.level, comps: [] };
+      byNode.set(r.id, entry);
+    }
+    if (r.rarity) entry.comps.push({ rarity: r.rarity });
+  }
+
+  let total = 0;
+  for (const n of byNode.values()) {
+    total += levelMultiplier(n.level) * componentMultiplier(n.comps);
+  }
+  networkGpCache = { value: total, at: now };
+  return total;
+}
+
+/** Drop the cached denominator after any write that changes node count/level/gear. */
+function invalidateNetworkGp(): void {
+  networkGpCache = null;
+}
+
 interface SettledNode {
   row: NodeRow;
   comps: ComponentRow[];
@@ -221,7 +282,9 @@ export function settleUser(wallet: string): {
   const rows = nodesOf(wallet);
   const withComps = rows.map((row) => ({ row, comps: equippedComponents(row.id) }));
   const userGp = withComps.reduce((sum, n) => sum + nodeGp(n.row, n.comps), 0);
-  const networkGp = userGp + SIM_NETWORK_GP;
+  // Denominator is the whole protocol. Math.max guards the case where a cached
+  // total lags a just-written node, which would otherwise push share above 1.
+  const networkGp = Math.max(networkGrowPower(now), userGp) + SIM_NETWORK_GP;
   const share = networkGp > 0 ? Math.min(userGp / networkGp, SHARE_CAP) : 0;
   const userRate = share * emission * boost;
 
@@ -482,6 +545,7 @@ export function mintNode(wallet: string, familyKey: string) {
     )
     .run(wallet, fam.family, now, now, now);
 
+  invalidateNetworkGp();
   return { node: { id: Number(res.lastInsertRowid), type: fam.family, level: 1 } };
 }
 
@@ -651,6 +715,7 @@ export function equipComponent(wallet: string, inventoryItemId: number, targetNo
     targetNodeId,
     inventoryItemId
   );
+  invalidateNetworkGp();
   return { ok: true, slot: comp.slot, rarity: comp.rarity, nodeId: targetNodeId };
 }
 
@@ -663,6 +728,7 @@ export function unequipComponent(wallet: string, nodeId: number, slot: string) {
     )
     .run(nodeId, slot, wallet);
   if (res.changes === 0) throw new GameError('Nothing equipped in that slot', 404);
+  invalidateNetworkGp();
   return { ok: true };
 }
 
@@ -712,6 +778,7 @@ export function upgradeNode(wallet: string, nodeId: number) {
     nodeId,
     toLevel: node.row.level + 1,
   });
+  invalidateNetworkGp();
   return { nodeId, level: node.row.level + 1, cost };
 }
 

@@ -176,8 +176,21 @@ export function welcomeBoostFactor(joinedAtMs: number | null, nowMs: number): nu
   return 1 + 7 * (1 - t / WELCOME_BOOST_WINDOW_S);
 }
 
-/** No fabricated network participants. Only recorded player grow-power counts. */
+/**
+ * Additional simulated grow power folded into the emission denominator. Kept at
+ * 0 so no fabricated participants are counted — the denominator is the real sum
+ * of every recorded node's grow power (see networkGrowPower in game.ts). Raise
+ * this only to damp early solo dominance; it is a tuning knob, not a fix.
+ */
 export const SIM_NETWORK_GP = 0;
+
+/**
+ * One-time OSR credited to a wallet on first sight so a new operator can afford
+ * their first node (an Oil Rig burns 1,000 OSR). Without this a fresh wallet has
+ * no route to its first node: no nodes means no production means nothing to
+ * claim, and crates also cost OSR. Tracked via users.dripped so it grants once.
+ */
+export const STARTER_OSR_GRANT = 1_000;
 
 /** Storage cap = 12h of production. */
 export const STORAGE_CAP_SECONDS = 43_200;
