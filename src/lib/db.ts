@@ -1,6 +1,7 @@
 import { DatabaseSync } from 'node:sqlite';
 import path from 'path';
 import fs from 'fs';
+import os from 'os';
 
 // Local game database on Node's built-in SQLite (node:sqlite, Node >= 22.5).
 // The original devnet deployment used a hosted API (devnet-api.osr.finance);
@@ -11,7 +12,12 @@ let db: DatabaseSync | null = null;
 
 export function getDb(): DatabaseSync {
   if (db) return db;
-  const dir = path.join(process.cwd(), 'data');
+  // Vercel functions run from a read-only /var/task bundle. Mainnet writes are
+  // locked elsewhere until audited contracts ship, so the legacy local engine
+  // is only an empty compatibility read there and belongs in writable /tmp.
+  const dir = process.env.VERCEL
+    ? path.join(os.tmpdir(), 'osr')
+    : path.join(process.cwd(), 'data');
   fs.mkdirSync(dir, { recursive: true });
   db = new DatabaseSync(path.join(dir, 'osr.db'));
   db.exec('PRAGMA journal_mode = WAL;');
