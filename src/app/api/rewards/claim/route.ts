@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import { requireAuthenticatedWallet } from '@/lib/api-util';
 import { GameError, claimRewards, settleUser } from '@/lib/game';
 import { issueClaimVoucher, settleClaim } from '@/lib/settlement';
-import { CLAIM_FEE_BPS } from '@/lib/economy';
+import { CLAIM_FEE_BPS, COMPOUND_REINVEST_FEE_BPS } from '@/lib/economy';
 
 export const dynamic = 'force-dynamic';
 
@@ -27,10 +27,15 @@ export async function POST(request: Request) {
     const nonce = typeof body.nonce === 'string' ? body.nonce : null;
     const txHash = typeof body.txHash === 'string' ? body.txHash : null;
 
+    const mode = body.mode === 'compound' ? 'compound' : 'claim';
+    const nodeId = body.nodeId == null ? undefined : Number(body.nodeId);
+    if (nodeId != null && !Number.isInteger(nodeId)) {
+      throw new GameError('nodeId must be an integer');
+    }
+
     if (nonce && txHash) {
       const result = await settleClaim(wallet, nonce, txHash, () =>
-        // Real tokens already left the vault, so skip the mirrored credit.
-        claimRewards(wallet, undefined, 'claim', { settledOnChain: true })
+        claimRewards(wallet, nodeId, mode, { settledOnChain: true })
       );
       return NextResponse.json({ settled: true, result });
     }
@@ -38,14 +43,24 @@ export async function POST(request: Request) {
       throw new GameError('both nonce and txHash are required to settle', 400);
     }
 
-    // Quote: sum what is claimable right now, net of the claim fee.
+    // Quote what is claimable right now, net of the mode's fee. Compound mode
+    // applies only to mining shafts and charges the lower reinvest fee.
     const { nodes } = settleUser(wallet);
-    const gross = nodes.reduce((sum, n) => sum + n.pendingOsr, 0);
-    if (gross <= 0) throw new GameError('nothing to claim yet');
-    const net = gross - (gross * CLAIM_FEE_BPS) / 10_000;
+    const eligible = nodes
+      .filter((n) => (nodeId == null ? true : n.row.id === nodeId))
+      .filter((n) => (mode === 'compound' ? n.row.family === 'mine' : true));
+
+    const gross = eligible.reduce((sum, n) => sum + n.pendingOsr, 0);
+    if (gross <= 0) {
+      throw new GameError(
+        mode === 'compound' ? 'nothing to compound on a mining shaft yet' : 'nothing to claim yet'
+      );
+    }
+    const feeBps = mode === 'compound' ? COMPOUND_REINVEST_FEE_BPS : CLAIM_FEE_BPS;
+    const net = gross - (gross * feeBps) / 10_000;
 
     const voucher = await issueClaimVoucher(wallet, net);
-    return NextResponse.json({ settled: false, voucher, gross, net });
+    return NextResponse.json({ settled: false, voucher, gross, net, mode });
   } catch (e) {
     if (e instanceof GameError) {
       return NextResponse.json({ error: e.message }, { status: e.status });

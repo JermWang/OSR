@@ -630,10 +630,12 @@ export function claimRewards(
     db.prepare(
       'UPDATE nodes SET accrued = 0, accrued_updated_at = ?, last_claim_at = ? WHERE id = ?'
     ).run(now, now, n.row.id);
-    // A settled claim already moved real OSR out of the vault to the operator's
-    // wallet, so crediting the mirrored balance too would pay them twice.
-    // Compounding is purely internal and always credits.
-    const credit = opts?.settledOnChain && !isCompound ? 0 : net;
+    // A settled claim already moved real OSR out of the vault into the
+    // operator's wallet, so crediting the mirrored balance too would pay twice.
+    // This holds for compound mode as well: once settlement is live, compounding
+    // is a claim at the lower reinvest fee that still lands real tokens on-chain,
+    // rather than an internal credit that could never be spent there.
+    const credit = opts?.settledOnChain ? 0 : net;
     db.prepare('UPDATE users SET osr_balance = osr_balance + ? WHERE wallet = ?').run(credit, wallet);
     bumpProtocolCounter('reserve', fee);
     addLedger(wallet, isCompound ? 'compound_claim' : 'claim', net, {

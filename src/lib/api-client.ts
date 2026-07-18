@@ -6,6 +6,15 @@
 
 import { getAccessToken, getIdentityToken } from '@privy-io/react-auth';
 import { PRIVY_CONFIGURED } from './config';
+import {
+  submitAction,
+  submitClaim,
+  type ActionVoucher,
+  type ClaimVoucher,
+  type StepHandler,
+} from './settlement-client';
+
+export type { SettlementStep, StepHandler } from './settlement-client';
 
 export interface NodeInfo {
   id: string;
@@ -177,6 +186,67 @@ async function request<T>(path: string, opts?: RequestInit): Promise<T> {
 
 const idem = () => `idem_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
 
+// ---------------------------------------------------------------------------
+// Settlement-backed actions
+// ---------------------------------------------------------------------------
+
+const post = <T>(path: string, body: unknown) =>
+  request<T>(path, { method: 'POST', body: JSON.stringify(body) });
+
+/**
+ * Ask the server to settle, retrying while the receipt is still short of the
+ * required confirmations. The server answers 425 in that window; anything else
+ * is a real failure and propagates immediately.
+ */
+async function settleWithRetry<T>(
+  path: string,
+  wallet: string,
+  nonce: string,
+  txHash: string,
+  extra: Record<string, unknown> = {}
+): Promise<T> {
+  const ATTEMPTS = 12;
+  for (let attempt = 0; attempt < ATTEMPTS; attempt += 1) {
+    try {
+      const res = await post<{ settled: boolean; result: T }>(path, {
+        wallet,
+        nonce,
+        txHash,
+        ...extra,
+      });
+      return res.result;
+    } catch (e) {
+      const awaiting = e instanceof Error && /awaiting confirmations/i.test(e.message);
+      if (!awaiting || attempt === ATTEMPTS - 1) throw e;
+      await new Promise((r) => setTimeout(r, 3_000));
+    }
+  }
+  throw new Error('Settlement timed out waiting for confirmations');
+}
+
+/**
+ * Full lifecycle for a priced action: quote, submit on-chain, then settle.
+ *
+ * The tx hash is the only thing carried from the client into the settle call,
+ * and the server re-derives everything else from the receipt, so a tampered
+ * client cannot talk itself into a state change it did not pay for.
+ */
+async function runAction<T>(
+  path: string,
+  wallet: string,
+  params: Record<string, unknown>,
+  onStep?: StepHandler
+): Promise<T> {
+  onStep?.('quoting');
+  const quote = await post<{ settled: boolean; voucher: ActionVoucher }>(path, {
+    wallet,
+    ...params,
+  });
+  const txHash = await submitAction(quote.voucher, onStep);
+  onStep?.('settling');
+  return settleWithRetry<T>(path, wallet, quote.voucher.nonce, txHash, params);
+}
+
 export const api = {
   privySession: (wallet: string) =>
     request<{ authenticated: boolean; userId: string; wallet: string; walletType: string }>(
@@ -217,36 +287,68 @@ export const api = {
     ),
   xstockPending: (wallet: string) => request<{ xomx: number; cvxx: number }>(`/xstock/pending/${wallet}`),
 
-  mintNode: (wallet: string, familyKey: string) =>
-    request<{ node: { id: number } }>('/nodes/mint', {
-      method: 'POST',
-      body: JSON.stringify({ wallet, familyKey, idempotencyKey: idem() }),
-    }),
-  upgradeNode: (wallet: string, nodeId: string | number) =>
-    request<{ nodeId: number; level: number; cost: number }>('/nodes/upgrade', {
-      method: 'POST',
-      body: JSON.stringify({ wallet, nodeId, idempotencyKey: idem() }),
-    }),
-  claim: (wallet: string, nodeId?: string | number, mode: 'claim' | 'compound' = 'claim') =>
-    request<{ claims: Array<{ nodeId: number; status: string; gross: number; fee: number; net: number; mode: string }> }>(
-      '/rewards/claim',
-      { method: 'POST', body: JSON.stringify({ wallet, nodeId, mode, idempotencyKey: idem() }) }
+  // Each of these quotes on the server, sends one on-chain transaction through
+  // the connected wallet, and then settles. onStep lets the UI narrate a flow
+  // that may involve an approval as well as the action itself.
+  mintNode: (wallet: string, familyKey: string, onStep?: StepHandler) =>
+    runAction<{ node: { id: number } }>('/nodes/mint', wallet, { familyKey }, onStep),
+
+  upgradeNode: (wallet: string, nodeId: string | number, onStep?: StepHandler) =>
+    runAction<{ nodeId: number; level: number; cost: number }>(
+      '/nodes/upgrade',
+      wallet,
+      { nodeId: Number(nodeId) },
+      onStep
     ),
-  openCrate: (wallet: string, crateType: 'rig_crate' | 'shaft_crate', targetNodeId?: string | number) =>
-    request<CrateResult>('/crates/open', {
-      method: 'POST',
-      body: JSON.stringify({ wallet, crateType, targetNodeId, idempotencyKey: idem() }),
-    }),
-  upgradeCompound: (wallet: string) =>
-    request<{ compound: { level: number; maxNodes: number; cratesPerDay: number } }>('/compound/upgrade', {
-      method: 'POST',
-      body: JSON.stringify({ wallet, idempotencyKey: idem() }),
-    }),
-  expediteCompound: (wallet: string) =>
-    request<{ compound: { level: number; maxNodes: number; cratesPerDay: number } }>('/compound/expedite', {
-      method: 'POST',
-      body: JSON.stringify({ wallet, idempotencyKey: idem() }),
-    }),
+
+  /** Pays out of the vault, so it redeems a claim voucher rather than executing an action. */
+  claim: async (
+    wallet: string,
+    nodeId?: string | number,
+    mode: 'claim' | 'compound' = 'claim',
+    onStep?: StepHandler
+  ) => {
+    const params = { nodeId: nodeId == null ? undefined : Number(nodeId), mode };
+    onStep?.('quoting');
+    const quote = await post<{ voucher: ClaimVoucher; gross: number; net: number }>(
+      '/rewards/claim',
+      { wallet, ...params }
+    );
+    const txHash = await submitClaim(quote.voucher, onStep);
+    onStep?.('settling');
+    return settleWithRetry<{
+      claims: Array<{ nodeId: number; status: string; gross: number; fee: number; net: number; mode: string }>;
+    }>('/rewards/claim', wallet, quote.voucher.nonce, txHash, params);
+  },
+
+  openCrate: (
+    wallet: string,
+    crateType: 'rig_crate' | 'shaft_crate',
+    targetNodeId?: string | number,
+    onStep?: StepHandler
+  ) =>
+    runAction<CrateResult>(
+      '/crates/open',
+      wallet,
+      { crateType, targetNodeId: targetNodeId == null ? null : Number(targetNodeId) },
+      onStep
+    ),
+
+  upgradeCompound: (wallet: string, onStep?: StepHandler) =>
+    runAction<{ compound: { level: number; maxNodes: number; cratesPerDay: number } }>(
+      '/compound/upgrade',
+      wallet,
+      {},
+      onStep
+    ),
+
+  expediteCompound: (wallet: string, onStep?: StepHandler) =>
+    runAction<{ compound: { level: number; maxNodes: number; cratesPerDay: number } }>(
+      '/compound/expedite',
+      wallet,
+      {},
+      onStep
+    ),
   equip: (wallet: string, inventoryItemId: number, targetNodeId: string | number) =>
     request<{ ok: boolean; slot: string }>('/components/equip', {
       method: 'POST',

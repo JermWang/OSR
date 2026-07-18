@@ -330,6 +330,25 @@ export function isWrongChain(chainId: number | null): boolean {
   return chainId !== null && chainId !== CHAIN.id;
 }
 
+/** The connected EIP-1193 provider, or null when no wallet is attached. */
+export function getActiveProvider(): Eip1193Provider | null {
+  return activeProvider;
+}
+
+/**
+ * Provider guaranteed to be connected and on Robinhood Chain, prompting a
+ * network switch if needed. Settlement transactions must never be sent to the
+ * wrong chain — the voucher's domain separator is chain-bound and would fail
+ * there anyway, but the operator would still pay gas to find out.
+ */
+export async function requireSettlementProvider(): Promise<Eip1193Provider> {
+  if (!activeProvider) throw new Error('Connect a wallet first');
+  await ensureRobinhoodChain(activeProvider);
+  return activeProvider;
+}
+
+export { robinhoodChain };
+
 export function shortAddress(address: string): string {
   return `${address.slice(0, 6)}…${address.slice(-4)}`;
 }

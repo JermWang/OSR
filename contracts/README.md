@@ -98,6 +98,16 @@ These are not optional, and none of them are done:
       per-invocation and ephemeral on Vercel. See `resolveDataDir()` in
       `src/lib/db.ts`. Game state will not survive a cold start as things
       stand.
-- [ ] **Client wiring.** `src/lib/api-client.ts` and the UI still call the old
-      single-phase endpoints; they do not yet submit the voucher transaction or
-      post the tx hash back.
+- [ ] **End-to-end run with a real wallet.** The client flow
+      (`src/lib/settlement-client.ts`) is wired but has only ever been exercised
+      against the auth gate — no transaction has been submitted, because no
+      contracts exist to submit to. The approval step, the fee value, the
+      confirmation wait and the 425 retry loop are all unproven in practice.
+
+Done since the settlement layer landed:
+
+- [x] **Client wiring.** `api.mintNode` / `upgradeNode` / `openCrate` /
+      `upgradeCompound` / `expediteCompound` now quote, submit on-chain through
+      the connected wallet, and settle. `api.claim` redeems a vault voucher.
+      Each accepts an `onStep` callback so the UI can narrate approval,
+      submission, confirmation and settlement.

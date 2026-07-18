@@ -5,13 +5,28 @@
 import dynamic from 'next/dynamic';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useOperation } from '@/lib/useOperation';
-import { api, type CrateResult, type NodeInfo } from '@/lib/api-client';
+import {
+  api,
+  type CrateResult,
+  type NodeInfo,
+  type SettlementStep,
+  type StepHandler,
+} from '@/lib/api-client';
 import { useWalletStore } from '@/lib/store';
 import { COMPONENT_RARITIES, NODE_SLOTS, SLOT_LABELS, type Rarity } from '@/lib/rarity';
 import { RARITY_MULT, getCrateCost, WELCOME_BOOST_WINDOW_S } from '@/lib/economy';
 import { SHOWROOM_NODES, type LightingPreset } from '@/components/three/Compound';
 import type { RigNodeData } from '@/components/three/NodeRig';
 import { CHAIN, ONCHAIN_ENABLED } from '@/lib/config';
+
+/** Operator-facing wording for each stage of an on-chain settlement. */
+const SETTLEMENT_STEP_LABEL: Record<SettlementStep, string> = {
+  quoting: 'Pricing action…',
+  approving: 'Approve OSR spend in your wallet',
+  submitting: 'Confirm the transaction in your wallet',
+  confirming: 'Waiting for confirmation…',
+  settling: 'Finalising…',
+};
 
 const Scene = dynamic(() => import('@/components/three/Scene'), { ssr: false });
 const CrateCinematic = dynamic(() => import('@/components/three/CrateCinematic'), { ssr: false });
@@ -127,14 +142,17 @@ export default function CommandPage() {
       : 0;
 
   const run = useCallback(
-    async (label: string, fn: () => Promise<unknown>, success?: string) => {
+    async (label: string, fn: (onStep: StepHandler) => Promise<unknown>, success?: string) => {
       if (!wallet) return say('Connect your wallet first');
       if (!ONCHAIN_ENABLED) {
         return say('Transactions are locked until the audited OSR contracts are deployed');
       }
       setBusy(label);
       try {
-        await fn();
+        // Settlement is several transactions deep — an approval, the action
+        // itself, then confirmation — so narrate each stage rather than leaving
+        // the operator staring at a spinner wondering which prompt is theirs.
+        await fn((step) => say(SETTLEMENT_STEP_LABEL[step]));
         await refresh();
         if (success) say(success);
       } catch (e) {
@@ -147,16 +165,16 @@ export default function CommandPage() {
   );
 
   const claimAll = () =>
-    run('claim', async () => {
-      const r = await api.claim(wallet!);
+    run('claim', async (onStep) => {
+      const r = await api.claim(wallet!, undefined, 'claim', onStep);
       const n = r.claims.length;
       say(n > 0 ? `Rewards claimed (${n})` : 'Nothing to claim');
     });
 
   const openCrate = (crateType: 'rig_crate' | 'shaft_crate') =>
-    run('crate', async () => {
+    run('crate', async (onStep) => {
       setLastCrateType(crateType);
-      const res = await api.openCrate(wallet!, crateType, selected?.id);
+      const res = await api.openCrate(wallet!, crateType, selected?.id, onStep);
       setCrateOpen(false);
       setCrateResult(res);
     });
@@ -428,8 +446,8 @@ export default function CommandPage() {
           counts={{ oil: oilCount, mine: mineCount }}
           capacities={{ oil: oilCapacity, mine: mineCapacity }}
           onDeploy={(familyKey) =>
-            run('mint', async () => {
-              await api.mintNode(wallet!, familyKey);
+            run('mint', async (onStep) => {
+              await api.mintNode(wallet!, familyKey, onStep);
               setDeployOpen(false);
               say('Node deployed — production started');
             })
@@ -469,7 +487,7 @@ function CompoundPanel({
   run,
 }: {
   busy: string | null;
-  run: (label: string, fn: () => Promise<unknown>, success?: string) => Promise<void>;
+  run: (label: string, fn: (onStep: StepHandler) => Promise<unknown>, success?: string) => Promise<void>;
 }) {
   const { op, wallet } = useOperation();
   if (!op) return null;
@@ -498,8 +516,8 @@ function CompoundPanel({
               className="btn-primary"
               disabled={busy === 'upgrade' || cooling}
               onClick={() =>
-                run('upgrade', async () => {
-                  await api.upgradeCompound(wallet!);
+                run('upgrade', async (onStep) => {
+                  await api.upgradeCompound(wallet!, onStep);
                 }, 'Compound upgraded!')
               }
             >
@@ -512,8 +530,8 @@ function CompoundPanel({
                 disabled={busy === 'expedite'}
                 onClick={() => {
                   if (confirm('Skip cooldown for 0.005 ETH?'))
-                    run('expedite', async () => {
-                      await api.expediteCompound(wallet!);
+                    run('expedite', async (onStep) => {
+                      await api.expediteCompound(wallet!, onStep);
                     }, 'Compound expedited!');
                 }}
               >
@@ -540,7 +558,7 @@ function NodeDetail({
 }: {
   node: NodeInfo;
   busy: string | null;
-  run: (label: string, fn: () => Promise<unknown>, success?: string) => Promise<void>;
+  run: (label: string, fn: (onStep: StepHandler) => Promise<unknown>, success?: string) => Promise<void>;
   onOpenCrate: () => void;
 }) {
   const { wallet } = useOperation();
@@ -606,8 +624,8 @@ function NodeDetail({
           className="btn-secondary text-xs"
           disabled={busy === 'nodeUp'}
           onClick={() =>
-            run('nodeUp', async () => {
-              await api.upgradeNode(wallet!, node.id);
+            run('nodeUp', async (onStep) => {
+              await api.upgradeNode(wallet!, node.id, onStep);
             }, `Node leveled up!`)
           }
         >
@@ -619,8 +637,8 @@ function NodeDetail({
           className="btn-secondary mt-2 w-full text-xs"
           disabled={busy === 'compound'}
           onClick={() =>
-            run('compound', async () => {
-              await api.claim(wallet!, node.id, 'compound');
+            run('compound', async (onStep) => {
+              await api.claim(wallet!, node.id, 'compound', onStep);
             }, 'Compounded at 0.75% fee')
           }
         >
