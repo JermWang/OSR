@@ -20,6 +20,6 @@ export async function POST(request: Request) {
       treasuryBps: 0,
       feeEth: EXPEDITE_FEE_ETH,
     }),
-    apply: (wallet) => upgradeCompound(wallet, true, { settledOnChain: true }),
+    apply: (wallet, _p, opts) => upgradeCompound(wallet, true, opts),
   });
 }

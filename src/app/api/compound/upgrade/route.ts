@@ -30,6 +30,6 @@ export async function POST(request: Request) {
         feeEth: next.feeEth,
       };
     },
-    apply: (wallet) => upgradeCompound(wallet, false, { settledOnChain: true }),
+    apply: (wallet, _p, opts) => upgradeCompound(wallet, false, opts),
   });
 }

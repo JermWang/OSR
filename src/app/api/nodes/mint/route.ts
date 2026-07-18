@@ -25,6 +25,6 @@ export async function POST(request: Request) {
         feeEth: fam.mintFeeEth,
       };
     },
-    apply: (wallet, p) => mintNode(wallet, p.familyKey, { settledOnChain: true }),
+    apply: (wallet, p, opts) => mintNode(wallet, p.familyKey, opts),
   });
 }

@@ -42,6 +42,6 @@ export async function POST(request: Request) {
       treasuryBps: TREASURY_BPS,
       feeEth: CRATE_FEE_ETH,
     }),
-    apply: (wallet, p) => openCrate(wallet, p.crateType, p.targetNodeId, { settledOnChain: true }),
+    apply: (wallet, p, opts) => openCrate(wallet, p.crateType, p.targetNodeId, opts),
   });
 }

@@ -144,9 +144,10 @@ export default function CommandPage() {
   const run = useCallback(
     async (label: string, fn: (onStep: StepHandler) => Promise<unknown>, success?: string) => {
       if (!wallet) return say('Connect your wallet first');
-      if (!ONCHAIN_ENABLED) {
-        return say('Transactions are locked until the audited OSR contracts are deployed');
-      }
+      // No client-side contract gate: the server decides whether an action
+      // settles on-chain or runs straight through the engine, and answers with
+      // whichever it did. Blocking here would lock the game before the token
+      // ships without adding any protection the server does not already give.
       setBusy(label);
       try {
         // Settlement is several transactions deep — an approval, the action
@@ -206,8 +207,8 @@ export default function CommandPage() {
 
         {!ONCHAIN_ENABLED && (
           <div className="rounded border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs leading-relaxed text-amber-200">
-            Real wallet mode is active on {CHAIN.name}. Financial actions stay locked until the
-            audited OSR token and game/vault contracts are deployed and configured.
+            Pre-token phase on {CHAIN.name}. Your compound is fully playable and OSR balances are
+            tracked by the protocol; they settle on-chain once the OSR token goes live.
           </div>
         )}
 

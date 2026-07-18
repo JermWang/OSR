@@ -238,10 +238,14 @@ async function runAction<T>(
   onStep?: StepHandler
 ): Promise<T> {
   onStep?.('quoting');
-  const quote = await post<{ settled: boolean; voucher: ActionVoucher }>(path, {
+  const quote = await post<{ settled: boolean; voucher?: ActionVoucher; result?: T }>(path, {
     wallet,
     ...params,
   });
+  // Settlement is not configured yet, so the server already applied the action
+  // and there is no transaction for the operator to sign.
+  if (quote.settled || !quote.voucher) return quote.result as T;
+
   const txHash = await submitAction(quote.voucher, onStep);
   onStep?.('settling');
   return settleWithRetry<T>(path, wallet, quote.voucher.nonce, txHash, params);
@@ -309,11 +313,19 @@ export const api = {
     onStep?: StepHandler
   ) => {
     const params = { nodeId: nodeId == null ? undefined : Number(nodeId), mode };
+    type Claims = {
+      claims: Array<{ nodeId: number; status: string; gross: number; fee: number; net: number; mode: string }>;
+    };
     onStep?.('quoting');
-    const quote = await post<{ voucher: ClaimVoucher; gross: number; net: number }>(
-      '/rewards/claim',
-      { wallet, ...params }
-    );
+    const quote = await post<{
+      settled: boolean;
+      voucher?: ClaimVoucher;
+      result?: Claims;
+      gross: number;
+      net: number;
+    }>('/rewards/claim', { wallet, ...params });
+    if (quote.settled || !quote.voucher) return quote.result as Claims;
+
     const txHash = await submitClaim(quote.voucher, onStep);
     onStep?.('settling');
     return settleWithRetry<{

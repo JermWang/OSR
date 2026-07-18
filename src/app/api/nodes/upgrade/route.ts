@@ -23,6 +23,6 @@ export async function POST(request: Request) {
         feeEth: 0,
       };
     },
-    apply: (wallet, p) => upgradeNode(wallet, p.nodeId, { settledOnChain: true }),
+    apply: (wallet, p, opts) => upgradeNode(wallet, p.nodeId, opts),
   });
 }

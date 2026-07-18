@@ -80,9 +80,19 @@ OSR_MIN_CONFIRMATIONS=2
 must never be a `NEXT_PUBLIC_` variable, and it should be rotated with
 `setVoucherSigner()` on both Vault and Game if there is any doubt.
 
-Writes unlock automatically once all four addresses and the signer are set —
-`settlementBlocker()` in `src/lib/settlement.ts` reports precisely which piece
-is missing until then, and the API returns that reason verbatim.
+## Pre-token mode
+
+Until those addresses are set the game runs **off-chain and fully playable**.
+Actions go straight through the engine, and `users.osr_balance` is the ledger of
+record. Setting the four addresses plus the signer flips every priced action to
+quote -> on-chain execute -> receipt verification with no other code change:
+`SETTLEMENT_CONFIGURED` in `src/lib/settlement.ts` is the single switch, and
+both the server routes and the client honour it.
+
+One thing to get right at that moment: balances accrued off-chain exist only in
+SQLite. Migrating them means minting or transferring the matching OSR to each
+holder, or explicitly deciding not to carry them over. Decide which before
+flipping the switch, not after.
 
 ## Before mainnet
 

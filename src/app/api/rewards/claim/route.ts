@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { requireAuthenticatedWallet } from '@/lib/api-util';
 import { GameError, claimRewards, settleUser } from '@/lib/game';
-import { issueClaimVoucher, settleClaim } from '@/lib/settlement';
+import { SETTLEMENT_CONFIGURED, issueClaimVoucher, settleClaim } from '@/lib/settlement';
 import { CLAIM_FEE_BPS, COMPOUND_REINVEST_FEE_BPS } from '@/lib/economy';
 
 export const dynamic = 'force-dynamic';
@@ -31,6 +31,13 @@ export async function POST(request: Request) {
     const nodeId = body.nodeId == null ? undefined : Number(body.nodeId);
     if (nodeId != null && !Number.isInteger(nodeId)) {
       throw new GameError('nodeId must be an integer');
+    }
+
+    // No vault to pay out of until the token ships, so rewards credit the
+    // mirrored balance directly. Configuring the contracts flips this to the
+    // voucher flow below with no other change.
+    if (!SETTLEMENT_CONFIGURED) {
+      return NextResponse.json({ settled: true, result: claimRewards(wallet, nodeId, mode) });
     }
 
     if (nonce && txHash) {
