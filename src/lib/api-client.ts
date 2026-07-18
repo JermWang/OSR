@@ -70,6 +70,7 @@ export interface UserOperation {
 
 export interface ProtocolOverview {
   networkProductionRate: number;
+  emissionFactors: { simNetworkGp: number; shareCap: number };
   totalNodes: number;
   totalOilRigs: number;
   totalMiningShafts: number;

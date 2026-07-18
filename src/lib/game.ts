@@ -39,7 +39,6 @@ import {
   STARTER_OSR_GRANT,
 } from './economy';
 import { NODE_SLOTS, RARITIES, type NodeFamily, type Rarity } from './rarity';
-import { CONTRACTS_CONFIGURED } from './config';
 
 export class GameError extends Error {
   status: number;
@@ -894,25 +893,10 @@ export function userOperation(wallet: string) {
 export function protocolOverview() {
   const now = Date.now();
   const g = genesisMs();
-  if (!CONTRACTS_CONFIGURED) {
-    const halving = halvingInfo(g, now);
-    return {
-      networkProductionRate: 0,
-      emissionFactors: { simNetworkGp: 0, shareCap: SHARE_CAP },
-      totalNodes: 0,
-      totalOilRigs: 0,
-      totalMiningShafts: 0,
-      totalSupply: 0,
-      totalOsrBurned: 0,
-      totalCreatorRewardsProcessed: 0,
-      osrReserveBalance: 0,
-      xomxReserveBalance: 0,
-      cvxxReserveBalance: 0,
-      treasury: 0,
-      genesisMs: g,
-      halving: { ...halving, currentRatePerSec: 0, nextRatePerSec: 0 },
-    };
-  }
+  // Always report the protocol's real figures. These are all derived from the
+  // engine's own ledger and the emission schedule, so they are true before the
+  // token exists as well as after; zeroing them pre-token made every protocol
+  // page read empty rather than honest.
   const counters = protocolCounters();
   const db = getDb();
   const totalNodes = (db.prepare('SELECT COUNT(*) AS c FROM nodes').get() as { c: number }).c;

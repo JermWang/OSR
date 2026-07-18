@@ -2,18 +2,21 @@
 
 import dynamic from 'next/dynamic';
 import Link from 'next/link';
+import { useEffect, useState } from 'react';
 import { Play, Wallet } from '@phosphor-icons/react';
 import { CHAIN } from '@/lib/config';
 import { SHOWROOM_NODES } from '@/components/three/Compound';
+import { api } from '@/lib/api-client';
+import { RARITIES } from '@/lib/rarity';
 
 const Scene = dynamic(() => import('@/components/three/Scene'), { ssr: false });
 
-const STATS = [
-  ['229M', 'OSR supply'],
-  ['12,847', 'nodes deployed'],
-  ['7', 'rarity tiers'],
-  ['30%', 'share cap'],
-];
+/** Compact figure: 229000000 -> 229M, 12847 -> 12,847. */
+function compact(n: number): string {
+  if (n >= 1e9) return `${(n / 1e9).toFixed(n % 1e9 === 0 ? 0 : 1)}B`;
+  if (n >= 1e6) return `${(n / 1e6).toFixed(n % 1e6 === 0 ? 0 : 1)}M`;
+  return Math.round(n).toLocaleString();
+}
 
 // Gold OSR tokens bobbing in front of the compound (prototype start screen).
 const TOKENS = [
@@ -29,6 +32,33 @@ const MOTES = [
 ];
 
 export default function Landing() {
+  // Live protocol figures. Nothing here is invented: supply, deployed nodes and
+  // the share cap all come from the running protocol, so the landing never
+  // advertises a network larger than the one that exists.
+  const [stats, setStats] = useState<Array<[string, string]> | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    void api
+      .overview()
+      .then((o) => {
+        if (cancelled) return;
+        setStats([
+          [compact(o.totalSupply), 'OSR supply'],
+          [compact(o.totalNodes), o.totalNodes === 1 ? 'node deployed' : 'nodes deployed'],
+          [String(RARITIES.length), 'rarity tiers'],
+          [`${Math.round(o.emissionFactors.shareCap * 100)}%`, 'share cap'],
+        ]);
+      })
+      .catch(() => {
+        // Landing must still render if the API is briefly unreachable; the
+        // strip simply stays hidden rather than showing invented numbers.
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   return (
     <main className="relative min-h-[max(100vh,760px)] overflow-hidden bg-[#0a0a1e] md:h-screen md:min-h-[680px]">
       <div className="absolute inset-0 z-[3]">
@@ -104,7 +134,7 @@ export default function Landing() {
       </section>
 
       <div className="pointer-events-none absolute inset-x-0 bottom-0 z-20 flex flex-wrap justify-center gap-2.5 bg-gradient-to-b from-transparent to-ink-950/55 px-[26px] pb-[26px] pt-5">
-        {STATS.map(([value, label]) => (
+        {(stats ?? []).map(([value, label]) => (
           <div key={label} className="glass-control flex items-center gap-2.5 rounded-xl border-amber-400/25 px-[18px] py-2.5">
             <span className="whitespace-nowrap font-mono text-[19px] font-bold text-amber-300">{value}</span>
             <span className="whitespace-nowrap font-mono text-[9.5px] uppercase tracking-[.16em] text-amber-100/65">{label}</span>
