@@ -170,7 +170,7 @@ export const SHARE_CAP = 0.3; // no user captures more than 30% of emission
  * the allocation that actually has to exist.
  */
 export const EMISSION_RESERVE_PCT = Number(
-  process.env.NEXT_PUBLIC_OSR_EMISSION_RESERVE_PCT ?? 0.3
+  process.env.NEXT_PUBLIC_OSR_EMISSION_RESERVE_PCT ?? 0.1
 );
 
 /** OSR set aside at genesis to fund every reward the protocol will ever pay. */
@@ -212,6 +212,25 @@ export const EMISSION_RESERVE_LABEL = compactOsr(EMISSION_RESERVE);
 export const PUBLIC_FLOAT_LABEL = compactOsr(PUBLIC_FLOAT);
 export const RESERVE_PCT_LABEL = `${Math.round(EMISSION_RESERVE_PCT * 100)}%`;
 export const FLOAT_PCT_LABEL = `${Math.round((1 - EMISSION_RESERVE_PCT) * 100)}%`;
+
+/**
+ * The halving schedule as displayed text, derived from GENESIS_RATE_PER_SEC.
+ *
+ * Built rather than written out: these figures move whenever the reserve
+ * percentage changes, and a hardcoded table silently goes stale the moment it
+ * does (exactly how the old 229M supply figures drifted).
+ */
+export const HALVING_SCHEDULE_TEXT = [0, 7, 14, 30]
+  .map((day) => {
+    const rate = GENESIS_RATE_PER_SEC / Math.pow(2, day / 7);
+    const emittedPct = Math.round((1 - Math.pow(0.5, day / 7)) * 100);
+    const tail = day === 0 ? '' : `, ${emittedPct}% of lifetime emitted`;
+    return `Day ${String(day).padStart(2)} : ${rate.toFixed(1).padStart(6)} OSR/sec  (${compactOsr(rate * 86400)}/day${tail})`;
+  })
+  .join('\n');
+
+/** First-day emission, for the docs' summary line. */
+export const DAY_ONE_EMISSION_LABEL = compactOsr(GENESIS_RATE_PER_SEC * 86400);
 
 export function emissionRateAt(genesisMs: number, nowMs: number): number {
   const cycle = Math.max(0, Math.floor((nowMs - genesisMs) / HALVING_PERIOD_MS));

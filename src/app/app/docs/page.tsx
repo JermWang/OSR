@@ -13,6 +13,7 @@ import {
   RESERVE_PCT_LABEL,
   FLOAT_PCT_LABEL,
   GENESIS_RATE_PER_SEC,
+  DAY_ONE_EMISSION_LABEL,
 } from '@/lib/economy';
 import { AURA_TIERS } from '@/lib/aura';
 import {
@@ -48,7 +49,7 @@ const rarityLabel = (r: Rarity) => r.charAt(0).toUpperCase() + r.slice(1);
 
 const EMISSION_CURVE = `E(t) = ${GENESIS_RATE_PER_SEC.toFixed(1)} OSR/sec × 0.5 ^ (t / 7d)
 
-Day 0  : 21.4M OSR emitted
+Day 0  : ${DAY_ONE_EMISSION_LABEL} OSR emitted
 Day 7  : 50% of lifetime already emitted
 Day 14 : 75% emitted
 Day 30 : 95% emitted

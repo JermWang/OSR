@@ -1,31 +1,26 @@
 import { NextResponse } from 'next/server';
 import { requireAuthenticatedWallet } from '@/lib/api-util';
 import { GameError, claimRewards, settleUser } from '@/lib/game';
-import { SETTLEMENT_CONFIGURED, issueClaimVoucher, settleClaim } from '@/lib/settlement';
+import { SETTLEMENT_CONFIGURED, payoutOsr, recordPayout } from '@/lib/settlement';
 import { CLAIM_FEE_BPS, COMPOUND_REINVEST_FEE_BPS } from '@/lib/economy';
 
 export const dynamic = 'force-dynamic';
 
 /**
- * Claiming pays OSR out of the vault, so it runs the opposite way to the
- * priced actions:
+ * Claiming runs the opposite way to the priced actions: the protocol pays the
+ * operator, so there is nothing for them to send and no two-phase quote. The
+ * server settles the accrual and transfers OSR from the protocol wallet.
  *
- *   quote   compute the claimable net, issue a Vault ClaimVoucher
- *   settle  verify the on-chain Claimed event, then zero the accrual
- *
- * The accrual is deliberately NOT deducted at quote time. If it were and the
- * operator never redeemed, the OSR would simply vanish. Deducting only after a
- * verified redemption means an unredeemed voucher costs them nothing, and
- * issueClaimVoucher allows just one outstanding voucher per wallet so the
- * overlap can't be redeemed twice.
+ * Order matters. The accrual is consumed BEFORE the transfer is sent: if it
+ * were sent first and the state write then failed, the same rewards could be
+ * claimed again and drain the reserve. A failed transfer after a successful
+ * write is the safer direction — the amount owed is recorded so it can be
+ * retried, rather than silently lost.
  */
 export async function POST(request: Request) {
   try {
     const body = (await request.json().catch(() => ({}))) as Record<string, unknown>;
     const wallet = await requireAuthenticatedWallet(request, body.wallet);
-
-    const nonce = typeof body.nonce === 'string' ? body.nonce : null;
-    const txHash = typeof body.txHash === 'string' ? body.txHash : null;
 
     const mode = body.mode === 'compound' ? 'compound' : 'claim';
     const nodeId = body.nodeId == null ? undefined : Number(body.nodeId);
@@ -33,30 +28,16 @@ export async function POST(request: Request) {
       throw new GameError('nodeId must be an integer');
     }
 
-    // No vault to pay out of until the token ships, so rewards credit the
-    // mirrored balance directly. Configuring the contracts flips this to the
-    // voucher flow below with no other change.
+    // Pre-token: rewards credit the mirrored balance, nothing moves on-chain.
     if (!SETTLEMENT_CONFIGURED) {
       return NextResponse.json({ settled: true, result: claimRewards(wallet, nodeId, mode) });
     }
 
-    if (nonce && txHash) {
-      const result = await settleClaim(wallet, nonce, txHash, () =>
-        claimRewards(wallet, nodeId, mode, { settledOnChain: true })
-      );
-      return NextResponse.json({ settled: true, result });
-    }
-    if (nonce || txHash) {
-      throw new GameError('both nonce and txHash are required to settle', 400);
-    }
-
-    // Quote what is claimable right now, net of the mode's fee. Compound mode
-    // applies only to mining shafts and charges the lower reinvest fee.
+    // Work out what is owed before consuming it, so we know how much to send.
     const { nodes } = settleUser(wallet);
     const eligible = nodes
       .filter((n) => (nodeId == null ? true : n.row.id === nodeId))
       .filter((n) => (mode === 'compound' ? n.row.family === 'mine' : true));
-
     const gross = eligible.reduce((sum, n) => sum + n.pendingOsr, 0);
     if (gross <= 0) {
       throw new GameError(
@@ -66,8 +47,25 @@ export async function POST(request: Request) {
     const feeBps = mode === 'compound' ? COMPOUND_REINVEST_FEE_BPS : CLAIM_FEE_BPS;
     const net = gross - (gross * feeBps) / 10_000;
 
-    const voucher = await issueClaimVoucher(wallet, net);
-    return NextResponse.json({ settled: false, voucher, gross, net, mode });
+    // Consume the accrual first (see note above), then pay.
+    const result = claimRewards(wallet, nodeId, mode, { settledOnChain: true });
+
+    let txHash: string;
+    try {
+      txHash = await payoutOsr(wallet, net);
+    } catch (payoutError) {
+      // The rewards are already spent server-side; record the debt rather than
+      // dropping it, and tell the operator plainly instead of failing silently.
+      recordPayout(wallet, net, 'PENDING', { error: String(payoutError), result });
+      console.error('[claim] payout failed after accrual was consumed', payoutError);
+      throw new GameError(
+        `Rewards were settled but the transfer did not go through. ${Math.round(net).toLocaleString()} OSR is recorded as owed to you and will be retried.`,
+        502
+      );
+    }
+
+    recordPayout(wallet, net, txHash, result);
+    return NextResponse.json({ settled: true, result, txHash, gross, net, mode });
   } catch (e) {
     if (e instanceof GameError) {
       return NextResponse.json({ error: e.message }, { status: e.status });

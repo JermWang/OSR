@@ -20,6 +20,7 @@ import {
   RESERVE_PCT_LABEL,
   FLOAT_PCT_LABEL,
   GENESIS_RATE_PER_SEC,
+  HALVING_SCHEDULE_TEXT,
   getCrateCost,
   getShaftBonusSlots,
 } from '@/lib/economy';
@@ -69,11 +70,8 @@ const REWARD_FLOW = `Launch: ${SUPPLY_LABEL} OSR minted by Flap to the bonding c
 
 const HALVING_TABLE = `E(t) = E₀ × 0.5 ^ (t / 7 days)
 
-Day 0  :  248.0 OSR/sec  (21.4M/day)
-Day 7  :  124.0 OSR/sec  (10.7M/day, 50% of lifetime emitted)
-Day 14 :   62.0 OSR/sec  (5.36M/day, 75%)
-Day 30 :   12.7 OSR/sec  (1.10M/day, 95%)
-Day 90 :   ~0            (emission effectively extinct)`;
+${HALVING_SCHEDULE_TEXT}
+Day 90 : ~0            (emission effectively extinct)`;
 
 const USER_RATE = `user_rate = min(user_gp / total_network_gp, 30%) × E(t) × welcome_boost
 

@@ -13,13 +13,13 @@ describe('API financial guards', () => {
     );
   });
 
-  it('keeps mainnet mutations locked while settlement is unconfigured', () => {
-    // No contracts are deployed in this environment, so the gate must hold —
-    // and must name the missing piece rather than failing opaquely.
+  it('keeps on-chain settlement locked until the token and wallet are set', () => {
+    // The OSR token address is unset in this environment, so the gate must hold
+    // — and must name the missing piece rather than failing opaquely.
     const blocker = settlementBlocker();
     expect(blocker).not.toBeNull();
-    expect(blocker).toMatch(/not deployed|not configured/);
-    expect(() => requireSettlement()).toThrow(/Mainnet transactions are locked/);
+    expect(blocker).toMatch(/not set|not configured/);
+    expect(() => requireSettlement()).toThrow(/On-chain settlement unavailable/);
   });
 });
 

@@ -22,8 +22,7 @@ import { CHAIN, ONCHAIN_ENABLED } from '@/lib/config';
 /** Operator-facing wording for each stage of an on-chain settlement. */
 const SETTLEMENT_STEP_LABEL: Record<SettlementStep, string> = {
   quoting: 'Pricing action…',
-  approving: 'Approve OSR spend in your wallet',
-  submitting: 'Confirm the transaction in your wallet',
+  submitting: 'Confirm the OSR payment in your wallet',
   confirming: 'Waiting for confirmation…',
   settling: 'Finalising…',
 };

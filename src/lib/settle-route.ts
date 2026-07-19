@@ -1,14 +1,14 @@
-// Route helper for the two-phase settlement flow.
+// Route helper for the quote / pay / settle flow.
 //
 // Each priced action route is the same shape:
 //
-//   POST { wallet, ...params }                 -> 200 { voucher }   (quote)
-//   POST { wallet, nonce, txHash }             -> 200 { result }    (settle)
+//   POST { wallet, ...params }       -> 200 { settled:false, payment }  (quote)
+//   POST { wallet, nonce, txHash }   -> 200 { settled:true,  result }   (settle)
 //
-// Critically, the settle phase reads its parameters back out of the stored
-// settlement row's `detail` field, never from the request body. The body is
-// attacker-controlled; `detail` was signed into the voucher and is echoed by
-// the on-chain event, so it is the only trustworthy source of what was paid for.
+// Between the two the operator sends the quoted OSR to the treasury wallet as a
+// plain ERC-20 transfer. Critically, the settle phase reads its parameters back
+// out of the stored settlement row's `detail`, never from the request body —
+// the body is attacker-controlled, the stored row is what was actually priced.
 
 import { NextResponse } from 'next/server';
 import { GameError, type SpendOpts } from './game';
@@ -16,8 +16,8 @@ import { requireAuthenticatedWallet } from './api-util';
 import {
   SETTLEMENT_CONFIGURED,
   encodeDetail,
-  issueVoucher,
-  settle,
+  quoteSpend,
+  settleSpend,
   type Quote,
   type SettlementAction,
 } from './settlement';
@@ -59,12 +59,11 @@ export async function handleSettlementRoute<P>(
     const body = (await request.json().catch(() => ({}))) as Record<string, unknown>;
     const wallet = await requireAuthenticatedWallet(request, body.wallet);
 
-    // Before the OSR token exists there is nothing on-chain to settle against,
-    // so the action runs straight through the engine and the mirrored balance
-    // is the ledger of record. The moment the contract addresses are configured
-    // this branch stops being taken and the same action routes through
-    // quote -> on-chain execute -> receipt verification instead. No other code
-    // has to change to make that switch.
+    // Until the token address and protocol wallet are configured there is
+    // nothing on-chain to pay, so the action runs straight through the engine
+    // and the mirrored balance is the ledger of record. Setting them flips the
+    // same action to quote -> ERC-20 transfer -> receipt verification. No other
+    // code has to change to make that switch.
     if (!SETTLEMENT_CONFIGURED) {
       const params = spec.parse(body, wallet);
       return NextResponse.json({ settled: true, result: spec.apply(wallet, params, {}) });
@@ -73,9 +72,9 @@ export async function handleSettlementRoute<P>(
     const nonce = typeof body.nonce === 'string' ? body.nonce : null;
     const txHash = typeof body.txHash === 'string' ? body.txHash : null;
 
-    // Phase 2 — settle an already-quoted action.
+    // Phase 2 — settle: verify the operator's payment landed, then apply.
     if (nonce && txHash) {
-      const result = await settle(wallet, nonce, txHash, (row) =>
+      const result = await settleSpend(wallet, nonce, txHash, (row) =>
         spec.apply(wallet, spec.decode(decodeDetail(row.detail)), { settledOnChain: true })
       );
       return NextResponse.json({ settled: true, result });
@@ -84,16 +83,15 @@ export async function handleSettlementRoute<P>(
       throw new GameError('both nonce and txHash are required to settle', 400);
     }
 
-    // Phase 1 — quote.
+    // Phase 1 — quote: price it and return payment instructions.
     const params = spec.parse(body, wallet);
-    const encoded = spec.encode(params);
     const priced = spec.price(wallet, params);
-    const voucher = await issueVoucher(wallet, {
+    const payment = await quoteSpend(wallet, {
       ...priced,
       action: spec.action,
-      detail: encodeDetail(encoded),
+      detail: encodeDetail(spec.encode(params)),
     });
-    return NextResponse.json({ settled: false, voucher });
+    return NextResponse.json({ settled: false, payment });
   } catch (e) {
     if (e instanceof GameError) {
       return NextResponse.json({ error: e.message }, { status: e.status });

@@ -7,10 +7,8 @@
 import { getAccessToken, getIdentityToken } from '@privy-io/react-auth';
 import { PRIVY_CONFIGURED } from './config';
 import {
-  submitAction,
-  submitClaim,
-  type ActionVoucher,
-  type ClaimVoucher,
+  submitPayment,
+  type PaymentRequest,
   type StepHandler,
 } from './settlement-client';
 
@@ -239,17 +237,17 @@ async function runAction<T>(
   onStep?: StepHandler
 ): Promise<T> {
   onStep?.('quoting');
-  const quote = await post<{ settled: boolean; voucher?: ActionVoucher; result?: T }>(path, {
+  const quote = await post<{ settled: boolean; payment?: PaymentRequest; result?: T }>(path, {
     wallet,
     ...params,
   });
   // Settlement is not configured yet, so the server already applied the action
-  // and there is no transaction for the operator to sign.
-  if (quote.settled || !quote.voucher) return quote.result as T;
+  // and there is nothing for the operator to pay.
+  if (quote.settled || !quote.payment) return quote.result as T;
 
-  const txHash = await submitAction(quote.voucher, onStep);
+  const txHash = await submitPayment(quote.payment, onStep);
   onStep?.('settling');
-  return settleWithRetry<T>(path, wallet, quote.voucher.nonce, txHash, params);
+  return settleWithRetry<T>(path, wallet, quote.payment.nonce, txHash, params);
 }
 
 export const api = {
@@ -306,32 +304,26 @@ export const api = {
       onStep
     ),
 
-  /** Pays out of the vault, so it redeems a claim voucher rather than executing an action. */
+  /**
+   * The protocol pays the operator, so there is nothing for them to sign — one
+   * request, and the server transfers OSR from the protocol wallet.
+   */
   claim: async (
     wallet: string,
     nodeId?: string | number,
     mode: 'claim' | 'compound' = 'claim',
     onStep?: StepHandler
   ) => {
-    const params = { nodeId: nodeId == null ? undefined : Number(nodeId), mode };
     type Claims = {
       claims: Array<{ nodeId: number; status: string; gross: number; fee: number; net: number; mode: string }>;
     };
-    onStep?.('quoting');
-    const quote = await post<{
-      settled: boolean;
-      voucher?: ClaimVoucher;
-      result?: Claims;
-      gross: number;
-      net: number;
-    }>('/rewards/claim', { wallet, ...params });
-    if (quote.settled || !quote.voucher) return quote.result as Claims;
-
-    const txHash = await submitClaim(quote.voucher, onStep);
     onStep?.('settling');
-    return settleWithRetry<{
-      claims: Array<{ nodeId: number; status: string; gross: number; fee: number; net: number; mode: string }>;
-    }>('/rewards/claim', wallet, quote.voucher.nonce, txHash, params);
+    const res = await post<{ settled: boolean; result: Claims; txHash?: string }>('/rewards/claim', {
+      wallet,
+      nodeId: nodeId == null ? undefined : Number(nodeId),
+      mode,
+    });
+    return res.result;
   },
 
   openCrate: (
