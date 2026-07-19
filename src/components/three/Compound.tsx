@@ -59,7 +59,14 @@ export const SHOWROOM_NODES: RigNodeData[] = [
   },
 ];
 
-function Water({ color = '#286b7f' }: { color?: string }) {
+/**
+ * Stylised procedural water. All "texture" is generated in-shader — layered
+ * value-noise ripples perturbing the normal, a drifting voronoi sparkle field,
+ * a sun-glitter path and crest foam — so there are no texture assets, no
+ * reflection render targets, and the whole surface stays one cheap draw call
+ * (mobile-safe, unlike the three.js example Water which needs both).
+ */
+function Water({ color = '#286b7f', glint = '#ffd194' }: { color?: string; glint?: string }) {
   const mat = useRef<THREE.ShaderMaterial>(null);
   useFrame(({ clock }) => {
     if (mat.current) mat.current.uniforms.uTime.value = clock.elapsedTime;
@@ -70,8 +77,9 @@ function Water({ color = '#286b7f' }: { color?: string }) {
       uTime: { value: 0 },
       uDeep: { value: deep },
       uShallow: { value: deep.clone().lerp(new THREE.Color('#2f7891'), 0.48) },
+      uGlint: { value: new THREE.Color(glint) },
     };
-  }, [color]);
+  }, [color, glint]);
   return (
     <mesh position={[-33, -0.32, 0]} rotation={[-Math.PI / 2, 0, 0]}>
       <planeGeometry args={[46, 130, 80, 80]} />
@@ -84,34 +92,103 @@ function Water({ color = '#286b7f' }: { color?: string }) {
 uniform float uTime;
 varying vec2 vUv;
 varying vec3 vWorldPosition;
+varying float vWave;
 void main(){
   vUv = uv;
   vec3 p = position;
   float broad = sin(p.x * 0.24 + uTime * 0.55) * 0.07 + cos(p.y * 0.19 + uTime * 0.42) * 0.06;
+  float mid = sin(p.x * 0.11 - p.y * 0.23 + uTime * 0.31) * 0.045;
   float detail = sin((p.x + p.y) * 0.72 - uTime * 0.8) * 0.025;
-  float w = broad + detail;
+  float w = broad + mid + detail;
   p.z += w;
+  vWave = w;
   vWorldPosition = (modelMatrix * vec4(p, 1.0)).xyz;
   gl_Position = projectionMatrix * modelViewMatrix * vec4(p, 1.0);
 }`}
         fragmentShader={`
 uniform vec3 uDeep;
 uniform vec3 uShallow;
+uniform vec3 uGlint;
 uniform float uTime;
 varying vec2 vUv;
 varying vec3 vWorldPosition;
+varying float vWave;
+
+float hash(vec2 p){
+  p = fract(p * vec2(123.34, 456.21));
+  p += dot(p, p + 45.32);
+  return fract(p.x * p.y);
+}
+float vnoise(vec2 p){
+  vec2 i = floor(p), f = fract(p);
+  vec2 u = f * f * (3.0 - 2.0 * f);
+  return mix(
+    mix(hash(i), hash(i + vec2(1.0, 0.0)), u.x),
+    mix(hash(i + vec2(0.0, 1.0)), hash(i + vec2(1.0, 1.0)), u.x),
+    u.y);
+}
+// Two scrolling octave pairs; the ripple "texture" of the surface.
+float ripple(vec2 q){
+  float h = 0.0;
+  h += vnoise(q * 0.55 + vec2(uTime * 0.10,  uTime * 0.06)) * 0.55;
+  h += vnoise(q * 1.35 - vec2(uTime * 0.14, -uTime * 0.05)) * 0.30;
+  h += vnoise(q * 3.10 + vec2(-uTime * 0.22, uTime * 0.16)) * 0.15;
+  return h;
+}
+// Animated cell field for the caustic-style shimmer web.
+float cells(vec2 p){
+  vec2 i = floor(p), f = fract(p);
+  float m = 1.5;
+  for (int y = -1; y <= 1; y++)
+  for (int x = -1; x <= 1; x++){
+    vec2 g = vec2(float(x), float(y));
+    vec2 o = vec2(hash(i + g), hash(i + g + 11.3));
+    o = 0.5 + 0.42 * sin(uTime * 0.55 + 6.2831 * o);
+    m = min(m, length(g + o - f));
+  }
+  return m;
+}
+
 void main(){
   vec3 dx = dFdx(vWorldPosition);
   vec3 dy = dFdy(vWorldPosition);
-  vec3 normal = normalize(cross(dx, dy));
-  if (!gl_FrontFacing) normal *= -1.0;
+  vec3 facet = normalize(cross(dx, dy));
+  if (!gl_FrontFacing) facet *= -1.0;
+
+  // Perturb the facet normal with the procedural ripple heightfield so the
+  // surface picks up fine detail the 80x80 grid cannot carry.
+  vec2 q = vWorldPosition.xz;
+  float e = 0.35;
+  float hC = ripple(q);
+  float hX = ripple(q + vec2(e, 0.0));
+  float hZ = ripple(q + vec2(0.0, e));
+  vec3 normal = normalize(facet + vec3(-(hX - hC), 0.0, -(hZ - hC)) * 2.8);
+
   vec3 viewDir = normalize(cameraPosition - vWorldPosition);
   vec3 sunDir = normalize(vec3(0.42, 0.78, -0.34));
+
   float fresnel = pow(1.0 - max(dot(normal, viewDir), 0.0), 3.2);
-  float specular = pow(max(dot(reflect(-sunDir, normal), viewDir), 0.0), 96.0);
-  float bands = 0.5 + 0.5 * sin(vUv.x * 58.0 + vUv.y * 37.0 + uTime * 0.45);
-  vec3 water = mix(uDeep, uShallow, 0.16 + fresnel * 0.42 + bands * 0.025);
-  water += vec3(1.0, 0.82, 0.58) * specular * 0.55;
+  vec3 reflDir = reflect(-sunDir, normal);
+  float specular = pow(max(dot(reflDir, viewDir), 0.0), 96.0);
+  // Broad glitter path under the sun: same reflection, looser exponent,
+  // broken up by the ripple field so it sparkles instead of smearing.
+  float glitter = pow(max(dot(reflDir, viewDir), 0.0), 18.0) * (0.35 + 0.65 * hC);
+
+  // Caustic web, faded with camera distance so the horizon stays calm.
+  float dist = length(cameraPosition - vWorldPosition);
+  float causticFade = 1.0 - smoothstep(26.0, 95.0, dist);
+  float web = pow(clamp(cells(q * 0.6), 0.0, 1.0), 2.4) * causticFade;
+
+  // Foam only on wave crests, broken by noise so it flecks rather than bands.
+  float crest = smoothstep(0.07, 0.13, vWave) * smoothstep(0.42, 0.72, vnoise(q * 2.2 + uTime * 0.12));
+
+  float depthMix = 0.18 + fresnel * 0.42 + (hC - 0.5) * 0.30;
+  vec3 water = mix(uDeep, uShallow, clamp(depthMix, 0.0, 1.0));
+  water += uShallow * web * 0.55;
+  water += uGlint * glitter * 0.45;
+  water += uGlint * specular * 0.60;
+  water = mix(water, vec3(0.92, 0.95, 0.94), crest * 0.35);
+
   gl_FragColor = vec4(water, 0.96);
 }`}
       />
@@ -205,7 +282,10 @@ export function Compound({
       />
 
       <Ground />
-      <Water color={preset === 'night' ? '#16334a' : '#286b7f'} />
+      <Water
+        color={preset === 'night' ? '#16334a' : '#286b7f'}
+        glint={preset === 'night' ? '#9fc4e8' : '#ffd194'}
+      />
 
       {byFamily.oil.map((n, i) => (
         <group key={n.id} position={nodePosition(i, 'oil', Number(n.id) || i)}>
