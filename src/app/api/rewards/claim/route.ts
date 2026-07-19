@@ -1,7 +1,12 @@
 import { NextResponse } from 'next/server';
 import { requireAuthenticatedWallet } from '@/lib/api-util';
 import { GameError, claimRewards, settleUser } from '@/lib/game';
-import { SETTLEMENT_CONFIGURED, payoutOsr, recordPayout } from '@/lib/settlement';
+import {
+  SETTLEMENT_CONFIGURED,
+  estimatePayoutGasOsr,
+  payoutOsr,
+  recordPayout,
+} from '@/lib/settlement';
 import { CLAIM_FEE_BPS, COMPOUND_REINVEST_FEE_BPS } from '@/lib/economy';
 
 export const dynamic = 'force-dynamic';
@@ -47,13 +52,25 @@ export async function POST(request: Request) {
     const feeBps = mode === 'compound' ? COMPOUND_REINVEST_FEE_BPS : CLAIM_FEE_BPS;
     const net = gross - (gross * feeBps) / 10_000;
 
+    // Check the claim can cover its own gas BEFORE consuming the accrual —
+    // rejecting afterwards would burn the operator's rewards for a payout that
+    // never went out, and there is no way to hand them back.
+    const gasOsr = await estimatePayoutGasOsr(wallet, net);
+    if (net - gasOsr <= 0) {
+      throw new GameError(
+        'this claim is too small to cover its own network fee — let more rewards accrue first',
+        400
+      );
+    }
+
     // Consume the accrual first (see note above), then pay.
     const result = claimRewards(wallet, nodeId, mode, { settledOnChain: true });
 
-    let txHash: string;
+    let payout: Awaited<ReturnType<typeof payoutOsr>>;
     try {
-      txHash = await payoutOsr(wallet, net);
+      payout = await payoutOsr(wallet, net);
     } catch (payoutError) {
+      if (payoutError instanceof GameError && payoutError.status === 400) throw payoutError;
       // The rewards are already spent server-side; record the debt rather than
       // dropping it, and tell the operator plainly instead of failing silently.
       recordPayout(wallet, net, 'PENDING', { error: String(payoutError), result });
@@ -64,8 +81,17 @@ export async function POST(request: Request) {
       );
     }
 
-    recordPayout(wallet, net, txHash, result);
-    return NextResponse.json({ settled: true, result, txHash, gross, net, mode });
+    // Record what actually left the treasury, not what was owed before gas.
+    recordPayout(wallet, payout.sentOsr, payout.hash, result);
+    return NextResponse.json({
+      settled: true,
+      result,
+      txHash: payout.hash,
+      gross,
+      net: payout.sentOsr,
+      gasOsr: payout.gasOsr,
+      mode,
+    });
   } catch (e) {
     if (e instanceof GameError) {
       return NextResponse.json({ error: e.message }, { status: e.status });

@@ -285,28 +285,98 @@ async function privyWalletRpc(body: Record<string, unknown>): Promise<Record<str
  * Send `osrAmount` OSR from the protocol wallet to an operator, returning the
  * transaction hash. Used for reward claims.
  */
-export async function payoutOsr(toWallet: string, osrAmount: number): Promise<string> {
+/**
+ * What the claimer is charged for the gas the protocol spends paying them.
+ *
+ * Operators pay their own gas on spends — they sign those transfers. A payout
+ * moves OSR *out of* the treasury, so only the treasury key can sign it and the
+ * claimer cannot be the one to pay the gas directly. Reimbursing in ETH would
+ * cost the claimer more gas than the payout it reimburses, and a standing
+ * allowance they could pull from would let anyone drain the treasury. So the
+ * cost is passed on in OSR instead: the protocol fronts the ETH and deducts the
+ * equivalent from the amount sent.
+ *
+ * The conversion needs an OSR/ETH rate, which does not exist until the token
+ * trades. While OSR_PER_ETH is unset the protocol absorbs the gas rather than
+ * inventing a price — at roughly a cent a claim the 2% claim fee covers it
+ * many times over. Set it once OSR has a market and claimers pay their own way.
+ */
+const OSR_PER_ETH = Number(process.env.OSR_PER_ETH ?? '0');
+
+export interface PayoutResult {
+  hash: string;
+  /** OSR actually sent, after the gas deduction. */
+  sentOsr: number;
+  /** OSR withheld to cover gas. Zero when no rate is configured. */
+  gasOsr: number;
+}
+
+/**
+ * Estimate what this payout will cost in gas, priced in OSR.
+ *
+ * Estimated rather than measured because the amount to send has to be decided
+ * before the transaction exists. A plain ERC-20 transfer is predictable, and
+ * the estimate is padded so a small gas rise does not leave the protocol short.
+ */
+export async function estimatePayoutGasOsr(toWallet: string, osrAmount: number): Promise<number> {
+  if (!(OSR_PER_ETH > 0)) return 0;
+  const decimals = await tokenDecimals();
+  const data = encodeFunctionData({
+    abi: erc20Abi,
+    functionName: 'transfer',
+    args: [toWallet as Hex, toUnits(osrAmount, decimals)],
+  });
+  return estimateGasOsr(OSR_TOKEN_ADDRESS as Hex, data);
+}
+
+async function estimateGasOsr(to: Hex, data: Hex): Promise<number> {
+  if (!(OSR_PER_ETH > 0)) return 0;
+  try {
+    const [gas, gasPrice] = await Promise.all([
+      publicClient().estimateGas({ account: TREASURY as Hex, to, data }),
+      publicClient().getGasPrice(),
+    ]);
+    const weiCost = (gas * gasPrice * 125n) / 100n; // 25% headroom
+    return (Number(weiCost) / 1e18) * OSR_PER_ETH;
+  } catch (e) {
+    // A failed estimate must not block the claim; absorbing a cent of gas is
+    // strictly better than refusing to pay someone what they earned.
+    console.error('[payout] gas estimate failed, absorbing gas cost', e);
+    return 0;
+  }
+}
+
+export async function payoutOsr(toWallet: string, osrAmount: number): Promise<PayoutResult> {
   requireSettlement();
   if (!(osrAmount > 0)) throw new GameError('payout amount must be positive');
 
   const decimals = await tokenDecimals();
-  const amount = toUnits(osrAmount, decimals);
-  const data = encodeFunctionData({
-    abi: erc20Abi,
-    functionName: 'transfer',
-    args: [toWallet as Hex, amount],
-  });
+  const encode = (value: number) =>
+    encodeFunctionData({
+      abi: erc20Abi,
+      functionName: 'transfer',
+      args: [toWallet as Hex, toUnits(value, decimals)],
+    });
+
+  const gasOsr = await estimateGasOsr(OSR_TOKEN_ADDRESS as Hex, encode(osrAmount));
+  const sentOsr = osrAmount - gasOsr;
+  if (!(sentOsr > 0)) {
+    throw new GameError(
+      'this claim is too small to cover its own network fee — let more rewards accrue first',
+      400
+    );
+  }
 
   const json = await privyWalletRpc({
     method: 'eth_sendTransaction',
     caip2: `eip155:${CHAIN.id}`,
-    params: { transaction: { to: OSR_TOKEN_ADDRESS, data, value: '0x0' } },
+    params: { transaction: { to: OSR_TOKEN_ADDRESS, data: encode(sentOsr), value: '0x0' } },
   });
 
   const payload = (json.data ?? json) as Record<string, unknown>;
   const hash = (payload.hash ?? payload.transaction_hash ?? payload.transactionHash) as string | undefined;
   if (!hash) throw new GameError('payout did not return a transaction hash', 502);
-  return hash;
+  return { hash, sentOsr, gasOsr };
 }
 
 /** Record a completed payout so it is auditable alongside spends. */

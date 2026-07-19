@@ -318,12 +318,18 @@ export const api = {
       claims: Array<{ nodeId: number; status: string; gross: number; fee: number; net: number; mode: string }>;
     };
     onStep?.('settling');
-    const res = await post<{ settled: boolean; result: Claims; txHash?: string }>('/rewards/claim', {
+    const res = await post<{
+      settled: boolean;
+      result: Claims;
+      txHash?: string;
+      /** OSR withheld to cover the gas of the payout transaction. */
+      gasOsr?: number;
+    }>('/rewards/claim', {
       wallet,
       nodeId: nodeId == null ? undefined : Number(nodeId),
       mode,
     });
-    return res.result;
+    return { ...res.result, txHash: res.txHash, gasOsr: res.gasOsr ?? 0 };
   },
 
   openCrate: (

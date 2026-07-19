@@ -168,7 +168,10 @@ export default function CommandPage() {
     run('claim', async (onStep) => {
       const r = await api.claim(wallet!, undefined, 'claim', onStep);
       const n = r.claims.length;
-      say(n > 0 ? `Rewards claimed (${n})` : 'Nothing to claim');
+      if (n === 0) return say('Nothing to claim');
+      // Name the network fee rather than letting the payout quietly arrive short.
+      const gas = r.gasOsr > 0 ? ` — ${r.gasOsr.toFixed(2)} OSR network fee` : '';
+      say(`Rewards claimed (${n})${gas}`);
     });
 
   const openCrate = (crateType: 'rig_crate' | 'shaft_crate') =>
