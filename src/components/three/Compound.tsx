@@ -60,35 +60,50 @@ export const SHOWROOM_NODES: RigNodeData[] = [
 ];
 
 /**
+ * Water pools scattered across the map by seeded grid-jitter, rather than one
+ * slab on the west edge. The terrain is divided into a coarse grid; each cell
+ * gets one jittered pool (a few cells left dry for natural gaps), so water is
+ * spread evenly-but-irregularly over the whole compound. Deterministic — the
+ * seeded RNG makes the layout stable across renders instead of jumping around.
+ */
+const WATER_POOLS: Array<{ x: number; z: number; size: number; y: number; rot: number }> = (() => {
+  let s = 0x9e3779b9 >>> 0;
+  const rnd = () => {
+    s = (s + 0x6d2b79f5) >>> 0;
+    let t = Math.imul(s ^ (s >>> 15), 1 | s);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+  const pools: Array<{ x: number; z: number; size: number; y: number; rot: number }> = [];
+  const cols = 4;
+  const rows = 3;
+  const x0 = -46;
+  const x1 = 40;
+  const z0 = -44;
+  const z1 = 26;
+  const cw = (x1 - x0) / cols;
+  const cd = (z1 - z0) / rows;
+  for (let c = 0; c < cols; c += 1) {
+    for (let r = 0; r < rows; r += 1) {
+      if (rnd() < 0.18) continue; // leave the odd cell dry for natural sand gaps
+      const x = x0 + (c + 0.5) * cw + (rnd() - 0.5) * cw * 0.5;
+      const z = z0 + (r + 0.5) * cd + (rnd() - 0.5) * cd * 0.5;
+      const size = 13 + rnd() * 15;
+      pools.push({ x, z, size, y: -0.33 + (rnd() - 0.5) * 0.03, rot: rnd() * Math.PI });
+    }
+  }
+  return pools;
+})();
+
+/**
  * Stylised procedural water. All "texture" is generated in-shader — layered
  * value-noise ripples perturbing the normal, a drifting voronoi sparkle field,
- * a sun-glitter path and crest foam — so there are no texture assets, no
- * reflection render targets, and the whole surface stays one cheap draw call
- * (mobile-safe, unlike the three.js example Water which needs both).
+ * a sun-glitter path and crest foam — so there are no texture assets and no
+ * reflection render targets (mobile-safe). One shared material drives every
+ * pool; the ripple/caustic fields are world-space, so adjacent pools stay
+ * visually continuous.
  */
-function Water({ color = '#286b7f', glint = '#ffd194' }: { color?: string; glint?: string }) {
-  const mat = useRef<THREE.ShaderMaterial>(null);
-  useFrame(({ clock }) => {
-    if (mat.current) mat.current.uniforms.uTime.value = clock.elapsedTime;
-  });
-  const uniforms = useMemo(() => {
-    const deep = new THREE.Color(color);
-    return {
-      uTime: { value: 0 },
-      uDeep: { value: deep },
-      uShallow: { value: deep.clone().lerp(new THREE.Color('#2f7891'), 0.48) },
-      uGlint: { value: new THREE.Color(glint) },
-    };
-  }, [color, glint]);
-  return (
-    <mesh position={[-33, -0.32, 0]} rotation={[-Math.PI / 2, 0, 0]}>
-      <planeGeometry args={[46, 130, 80, 80]} />
-      <shaderMaterial
-        ref={mat}
-        transparent
-        depthWrite={false}
-        uniforms={uniforms}
-        vertexShader={`
+const WATER_VERT = `
 uniform float uTime;
 varying vec2 vUv;
 varying vec3 vWorldPosition;
@@ -104,8 +119,9 @@ void main(){
   vWave = w;
   vWorldPosition = (modelMatrix * vec4(p, 1.0)).xyz;
   gl_Position = projectionMatrix * modelViewMatrix * vec4(p, 1.0);
-}`}
-        fragmentShader={`
+}`;
+
+const WATER_FRAG = `
 uniform vec3 uDeep;
 uniform vec3 uShallow;
 uniform vec3 uGlint;
@@ -189,10 +205,49 @@ void main(){
   water += uGlint * specular * 0.60;
   water = mix(water, vec3(0.92, 0.95, 0.94), crest * 0.35);
 
-  gl_FragColor = vec4(water, 0.96);
-}`}
-      />
-    </mesh>
+  // Circular pool mask: fade the square plane into a soft round pool edge so
+  // scattered pools read as water bodies, not tiles.
+  float edge = length(vUv - 0.5) * 2.0;
+  float mask = 1.0 - smoothstep(0.82, 0.99, edge);
+  if (mask < 0.01) discard;
+  gl_FragColor = vec4(water, 0.94 * mask);
+}`;
+
+function Water({ color = '#286b7f', glint = '#ffd194' }: { color?: string; glint?: string }) {
+  // One shared material for every pool: the ripple/caustic fields are computed
+  // in world space, so a single material keeps all pools looking like the same
+  // body of water sampled at different spots, and animates them in one place.
+  const material = useMemo(() => {
+    const deep = new THREE.Color(color);
+    return new THREE.ShaderMaterial({
+      transparent: true,
+      depthWrite: false,
+      uniforms: {
+        uTime: { value: 0 },
+        uDeep: { value: deep },
+        uShallow: { value: deep.clone().lerp(new THREE.Color('#2f7891'), 0.48) },
+        uGlint: { value: new THREE.Color(glint) },
+      },
+      vertexShader: WATER_VERT,
+      fragmentShader: WATER_FRAG,
+    });
+  }, [color, glint]);
+  useFrame(({ clock }) => {
+    material.uniforms.uTime.value = clock.elapsedTime;
+  });
+  return (
+    <group>
+      {WATER_POOLS.map((pool, i) => (
+        <mesh
+          key={i}
+          position={[pool.x, pool.y, pool.z]}
+          rotation={[-Math.PI / 2, 0, pool.rot]}
+          material={material}
+        >
+          <planeGeometry args={[pool.size, pool.size, 40, 40]} />
+        </mesh>
+      ))}
+    </group>
   );
 }
 

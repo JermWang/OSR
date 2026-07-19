@@ -10,13 +10,20 @@ import { Sparkles, Float } from '@react-three/drei';
 import { RARITY_ORDER, RARITY_COLOR, rarityTier } from './fx';
 import type { Rarity } from '@/lib/rarity';
 
+/**
+ * Flat digital deploy-pad under each rig. Replaces the old soft additive radial
+ * bloom (which read as a 3D volume of light) with a crisp, 2D HUD-style decal:
+ * a thin filled disc, hard-edged perimeter and inner rings, radial tick marks,
+ * and a slow radar sweep. Normal blending (not additive) keeps it reading as a
+ * flat marking on the sand rather than a glow.
+ */
 export function GroundGlow({ color, radius, opacity = 0.22 }: { color: string; radius: number; opacity?: number }) {
   const mat = useRef<THREE.ShaderMaterial>(null);
   useFrame(({ clock }) => {
-    if (mat.current) mat.current.uniforms.uOpacity.value = opacity * (0.85 + 0.15 * Math.sin(clock.elapsedTime));
+    if (mat.current) mat.current.uniforms.uTime.value = clock.elapsedTime;
   });
   const uniforms = useMemo(
-    () => ({ uColor: { value: new THREE.Color(color) }, uOpacity: { value: opacity } }),
+    () => ({ uColor: { value: new THREE.Color(color) }, uOpacity: { value: opacity }, uTime: { value: 0 } }),
     [color, opacity]
   );
   return (
@@ -26,12 +33,32 @@ export function GroundGlow({ color, radius, opacity = 0.22 }: { color: string; r
         ref={mat}
         transparent
         depthWrite={false}
-        blending={THREE.AdditiveBlending}
         toneMapped={false}
         uniforms={uniforms}
         vertexShader={`varying vec2 vUv; void main(){ vUv=uv; gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.0); }`}
-        fragmentShader={`uniform vec3 uColor; uniform float uOpacity; varying vec2 vUv;
-void main(){ float d=distance(vUv,vec2(0.5)); float a=smoothstep(0.5,0.0,d)*uOpacity; gl_FragColor=vec4(uColor,a); }`}
+        fragmentShader={`uniform vec3 uColor; uniform float uOpacity; uniform float uTime; varying vec2 vUv;
+void main(){
+  vec2 p = (vUv - 0.5) * 2.0;
+  float d = length(p);
+  if (d > 1.0) discard;
+  float aa = fwidth(d) * 1.5;
+
+  // Thin flat fill with a hard outer cut — a solid pad, not a soft gradient.
+  float fill = (1.0 - smoothstep(0.90 - aa, 0.90, d)) * 0.16;
+  // Crisp perimeter + inner rings.
+  float outer = smoothstep(0.020 + aa, 0.020, abs(d - 0.90)) * 0.6;
+  float inner = smoothstep(0.014 + aa, 0.014, abs(d - 0.52)) * 0.42;
+  // Radial tick marks around the pad (16 ticks) — digital markers.
+  float ang = atan(p.y, p.x);
+  float ticks = step(0.86, abs(sin(ang * 8.0))) * smoothstep(0.03 + aa, 0.03, abs(d - 0.72)) * 0.5;
+  // Slow radar sweep for a subtle digital pulse.
+  float sweepAng = mod(ang - uTime * 0.7, 6.28318);
+  float sweep = smoothstep(0.7, 0.0, sweepAng) * (1.0 - smoothstep(0.86, 0.90, d)) * 0.10;
+
+  float glow = fill + outer + inner + ticks + sweep;
+  float a = glow * (0.85 + 0.15 * sin(uTime * 1.5)) * (0.5 + 1.7 * uOpacity);
+  gl_FragColor = vec4(uColor, clamp(a, 0.0, 0.9));
+}`}
       />
     </mesh>
   );
