@@ -201,9 +201,9 @@ export default function CommandPage() {
   }
 
   return (
-    <div className="mx-auto flex min-h-[calc(100vh-136px)] max-w-[1560px] flex-col gap-[18px] p-4 md:grid md:grid-cols-[378px_minmax(0,1fr)] md:items-start md:px-[22px] md:py-5">
+    <div className="mx-auto flex min-h-[calc(100vh_-_136px)] max-w-[1560px] flex-col gap-[18px] p-4 md:grid md:grid-cols-[378px_minmax(0,1fr)] md:items-start md:px-[22px] md:py-5">
       {/* Sidebar */}
-      <aside className="flex w-full flex-col gap-[14px] md:max-h-[calc(100vh-176px)] md:overflow-y-auto md:pr-1">
+      <aside className="flex w-full flex-col gap-[14px] md:max-h-[calc(100vh_-_176px)] md:overflow-y-auto md:pr-1">
 
         {!ONCHAIN_ENABLED && (
           <div className="rounded border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs leading-relaxed text-amber-200">
@@ -214,7 +214,9 @@ export default function CommandPage() {
 
         {error && (
           <div className="rounded border border-red-500/40 bg-red-500/10 px-3 py-2 text-xs text-red-400">
-            API unreachable — retrying…
+            {/^\d{3}\b|auth|privy|token|unauthor/i.test(error)
+              ? `Sign-in could not be verified (${error}) — retrying…`
+              : `API unreachable (${error}) — retrying…`}
           </div>
         )}
 
@@ -369,7 +371,7 @@ export default function CommandPage() {
       </aside>
 
       {/* 3D scene */}
-      <div className="relative min-h-[520px] overflow-hidden rounded-[18px] border border-white/[.08] bg-ink-800 shadow-[0_1px_0_rgba(255,255,255,.045)_inset,0_24px_60px_-32px_rgba(0,0,0,.95)] md:min-h-[660px]">
+      <div className="relative h-[max(440px,60vh)] overflow-hidden rounded-[18px] border border-white/[.08] bg-ink-800 shadow-[0_1px_0_rgba(255,255,255,.045)_inset,0_24px_60px_-32px_rgba(0,0,0,.95)] md:h-[max(560px,calc(100vh_-_176px))]">
         <Scene
           nodes={sceneNodes}
           preset={preset}

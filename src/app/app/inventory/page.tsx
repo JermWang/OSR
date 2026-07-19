@@ -480,7 +480,7 @@ export default function InventoryPage() {
 
       {/* Toast */}
       {toast && (
-        <div className="fixed bottom-[calc(env(safe-area-inset-bottom)+84px)] left-1/2 z-[60] -translate-x-1/2 rounded-full border border-amber-500/50 bg-ink-800 px-4 py-2 text-sm text-steel-200 shadow-lg md:bottom-6">
+        <div className="fixed bottom-[calc(env(safe-area-inset-bottom)_+_84px)] left-1/2 z-[60] -translate-x-1/2 rounded-full border border-amber-500/50 bg-ink-800 px-4 py-2 text-sm text-steel-200 shadow-lg md:bottom-6">
           {toast}
         </div>
       )}

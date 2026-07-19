@@ -21,7 +21,7 @@ export default function PageShell({
 }: PageShellProps) {
   return (
     <div className="min-h-full text-steel-200">
-      <main className={`mx-auto w-full p-5 pb-[calc(env(safe-area-inset-bottom)+76px)] md:px-[22px] md:py-8 md:pb-10 ${maxWidth}`}>
+      <main className={`mx-auto w-full p-5 pb-[calc(env(safe-area-inset-bottom)_+_76px)] md:px-[22px] md:py-8 md:pb-10 ${maxWidth}`}>
         <div className="mb-6 flex min-w-0 items-start gap-4">
           <Link
             href={backHref}
