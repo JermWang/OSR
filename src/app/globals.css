@@ -117,7 +117,6 @@ textarea:focus-visible {
 @keyframes sweep { 0% { transform: translateX(-120%) skewX(-18deg); } 100% { transform: translateX(320%) skewX(-18deg); } }
 @keyframes title-glow { 0%, 100% { text-shadow: 0 0 24px rgba(245,166,35,.25); } 50% { text-shadow: 0 0 40px rgba(245,166,35,.5); } }
 @keyframes blink { 0%, 100% { opacity: .35; } 50% { opacity: 1; } }
-@keyframes bob { 0%, 100% { transform: translateY(0) rotate(-1deg); } 50% { transform: translateY(-16px) rotate(1deg); } }
 @keyframes drift {
   0% { transform: translate(0, 0); opacity: 0; }
   12% { opacity: .7; }

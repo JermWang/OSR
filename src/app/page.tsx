@@ -6,7 +6,6 @@ import { useEffect, useState } from 'react';
 import { Play, Wallet } from '@phosphor-icons/react';
 import { CHAIN } from '@/lib/config';
 import { SHOWROOM_NODES } from '@/components/three/Compound';
-import { api } from '@/lib/api-client';
 import { RARITIES } from '@/lib/rarity';
 
 const Scene = dynamic(() => import('@/components/three/Scene'), { ssr: false });
@@ -17,13 +16,6 @@ function compact(n: number): string {
   if (n >= 1e6) return `${(n / 1e6).toFixed(n % 1e6 === 0 ? 0 : 1)}M`;
   return Math.round(n).toLocaleString();
 }
-
-// Gold OSR tokens bobbing in front of the compound (prototype start screen).
-const TOKENS = [
-  { style: { left: '16%', top: '42%' }, size: 46, glyph: 18, glow: '0 0 22px rgba(245,166,35,.7), inset 0 0 0 2px rgba(255,255,255,.35)', anim: 'bob 4s ease-in-out infinite' },
-  { style: { right: '15%', top: '34%' }, size: 34, glyph: 14, glow: '0 0 18px rgba(245,166,35,.6), inset 0 0 0 2px rgba(255,255,255,.3)', anim: 'bob 5.2s ease-in-out infinite .8s' },
-  { style: { right: '26%', bottom: '30%' }, size: 26, glyph: 11, glow: '0 0 14px rgba(245,166,35,.55)', anim: 'bob 4.6s ease-in-out infinite .3s' },
-];
 
 const MOTES = [
   { left: '12%', bottom: '24%', size: 4, alpha: 0.8, anim: 'drift 9s linear infinite' },
@@ -39,9 +31,19 @@ export default function Landing() {
 
   useEffect(() => {
     let cancelled = false;
-    void api
-      .overview()
-      .then((o) => {
+    // Plain fetch, not the shared api client: this endpoint is public, and the
+    // client pulls in Privy to attach auth headers. The landing renders outside
+    // the Privy provider, so that dependency buys nothing and can stall the
+    // request before it is ever sent.
+    void (async () => {
+      try {
+        const res = await fetch('/api/protocol/overview', { cache: 'no-store' });
+        if (!res.ok) throw new Error(`overview ${res.status}`);
+        const o = (await res.json()) as {
+          totalSupply: number;
+          totalNodes: number;
+          emissionFactors: { shareCap: number };
+        };
         if (cancelled) return;
         setStats([
           [compact(o.totalSupply), 'OSR supply'],
@@ -49,11 +51,12 @@ export default function Landing() {
           [String(RARITIES.length), 'rarity tiers'],
           [`${Math.round(o.emissionFactors.shareCap * 100)}%`, 'share cap'],
         ]);
-      })
-      .catch(() => {
-        // Landing must still render if the API is briefly unreachable; the
-        // strip simply stays hidden rather than showing invented numbers.
-      });
+      } catch (e) {
+        // Keep the strip hidden rather than showing invented numbers, but never
+        // swallow the reason — a silent catch here hid a real failure once.
+        console.error('[landing] protocol overview unavailable', e);
+      }
+    })();
     return () => {
       cancelled = true;
     };
@@ -65,17 +68,7 @@ export default function Landing() {
         <Scene nodes={SHOWROOM_NODES} preset="sunset" selectedNodeId={null} focusNodeId={null} variant="landing" />
       </div>
 
-      {/* Floating OSR tokens and dust motes sit above the compound but below the scrim. */}
-      {TOKENS.map((t, i) => (
-        <div
-          key={`token-${i}`}
-          aria-hidden
-          className="pointer-events-none absolute z-[5] grid place-items-center rounded-full bg-gradient-to-br from-[#ffe0a3] via-[#f5a623] to-[#c9761a] text-[#3a1e05]"
-          style={{ ...t.style, width: t.size, height: t.size, fontSize: t.glyph, boxShadow: t.glow, animation: t.anim }}
-        >
-          ◆
-        </div>
-      ))}
+      {/* Dust motes sit above the compound but below the scrim. */}
       {MOTES.map((m, i) => (
         <div
           key={`mote-${i}`}
