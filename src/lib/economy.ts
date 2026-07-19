@@ -142,10 +142,44 @@ export const NODE_FAMILIES: NodeFamilyDef[] = [
 ];
 
 // Emission — Bitcoin-style halving curve.
-export const TOTAL_SUPPLY = 229_000_000; // pre-minted, mint authority revoked
+/**
+ * Total OSR supply.
+ *
+ * Flap mints every launch at its default max supply of 1e9 with 18 decimals,
+ * so that is the figure the app must agree with. Overridable because the true
+ * number is whatever the deployed token reports: once NEXT_PUBLIC_OSR_TOKEN is
+ * set, protocolOverview reads totalSupply() straight off the contract and this
+ * constant becomes a fallback for the pre-launch period only.
+ *
+ * Lifetime emission is GENESIS_RATE_PER_SEC * HALVING_PERIOD * 2 (the geometric
+ * sum of a halving schedule) = ~316.9M, about 32% of supply. Changing supply
+ * without revisiting GENESIS_RATE_PER_SEC changes that ratio.
+ */
+export const TOTAL_SUPPLY = Number(
+  process.env.NEXT_PUBLIC_OSR_TOTAL_SUPPLY ?? 1_000_000_000
+);
 export const GENESIS_RATE_PER_SEC = 262; // OSR/sec at genesis
 export const HALVING_PERIOD_MS = 7 * 24 * 3600 * 1000; // halves weekly
 export const SHARE_CAP = 0.3; // no user captures more than 30% of emission
+
+/** Compact figure for display: 1000000000 -> 1B, 316915200 -> 316.9M. */
+export function compactOsr(n: number): string {
+  if (n >= 1e9) return `${(n / 1e9).toFixed(n % 1e9 === 0 ? 0 : 2)}B`;
+  if (n >= 1e6) return `${(n / 1e6).toFixed(n % 1e6 === 0 ? 0 : 1)}M`;
+  return Math.round(n).toLocaleString();
+}
+
+/**
+ * Total OSR ever paid out as rewards, across every halving cycle.
+ *
+ * A halving schedule's lifetime sum is rate * period * 2, so this is a distinct
+ * (and much smaller) figure than TOTAL_SUPPLY. The two were previously conflated
+ * in the docs, which quoted supply as the emission total.
+ */
+export const LIFETIME_EMISSION = GENESIS_RATE_PER_SEC * (HALVING_PERIOD_MS / 1000) * 2;
+
+export const SUPPLY_LABEL = compactOsr(TOTAL_SUPPLY);
+export const LIFETIME_EMISSION_LABEL = compactOsr(LIFETIME_EMISSION);
 
 export function emissionRateAt(genesisMs: number, nowMs: number): number {
   const cycle = Math.max(0, Math.floor((nowMs - genesisMs) / HALVING_PERIOD_MS));

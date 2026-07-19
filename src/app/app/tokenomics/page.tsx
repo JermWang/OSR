@@ -13,6 +13,8 @@ import {
   EXPEDITE_FEE_ETH,
   MAX_COMPOUND_LEVEL,
   MINT_FEE_ETH,
+  LIFETIME_EMISSION_LABEL,
+  SUPPLY_LABEL,
   getCrateCost,
   getShaftBonusSlots,
 } from '@/lib/economy';
@@ -29,13 +31,13 @@ interface FamilyEcon {
   mintFeeEth: number;
 }
 
-const REWARD_FLOW = `Genesis: 229M OSR pre-minted to the protocol-owned OSR Emission Reserve contract
+const REWARD_FLOW = `Genesis: ${SUPPLY_LABEL} OSR fixed supply; ${LIFETIME_EMISSION_LABEL} allocated to the OSR Emission Reserve
          (mint authority revoked immediately after distribution)
                 │
                 ▼
   ┌─────────────────────────────┐
   │   OSR Emission Reserve      │
-  │   229M OSR (pre-minted)     │
+  │   ${LIFETIME_EMISSION_LABEL} OSR allocated      │
   └──────────────┬──────────────┘
                  │  halving curve E(t) = 262 × 0.5^(t/7d)
                  ▼
@@ -116,7 +118,7 @@ export default function TokenomicsPage() {
             </li>
             <li>
               A halving emission curve (E₀ = 262 OSR/sec, halves every 7 days) distributes OSR from
-              a pre-minted <strong className="text-white">229M reserve</strong>. Each user earns a
+              a <strong className="text-white">{LIFETIME_EMISSION_LABEL} reserve</strong>. Each user earns a
               share proportional to their grow-power, capped at 30% per user to prevent
               lottery-in-thin-network wins.
             </li>
@@ -242,7 +244,7 @@ export default function TokenomicsPage() {
             </pre>
           </div>
           <p className="mt-3 text-sm leading-relaxed text-steel-300">
-            Lifetime emission = <strong className="text-white">229M OSR</strong>, pre-minted to the
+            Lifetime emission = <strong className="text-white">{LIFETIME_EMISSION_LABEL} OSR</strong> of the {SUPPLY_LABEL} supply, held in the
             protocol-owned emission reserve contract at genesis. Mint authority is revoked
             post-distribution — no new supply can ever be created.
           </p>

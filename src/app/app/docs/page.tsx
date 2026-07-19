@@ -5,6 +5,7 @@ import Link from 'next/link';
 import PageShell from '@/components/ui/PageShell';
 import ComponentTile from '@/components/ui/ComponentTile';
 import NodePreview from '@/components/three/NodePreview';
+import { LIFETIME_EMISSION_LABEL, SUPPLY_LABEL } from '@/lib/economy';
 import { AURA_TIERS } from '@/lib/aura';
 import {
   COMPOUND_FEE_ETH,
@@ -43,7 +44,7 @@ Day 0  : 22.6M OSR emitted
 Day 7  : 50% of lifetime already emitted
 Day 14 : 75% emitted
 Day 30 : 95% emitted
-Lifetime total: 229M OSR (pre-minted, mint authority revoked)`;
+Lifetime total: ${LIFETIME_EMISSION_LABEL} OSR emitted from a ${SUPPLY_LABEL} fixed supply`;
 
 const USER_RATE = `user_rate = min(your_gp / network_gp, 30%) × E(t) × welcome_boost
 
@@ -89,7 +90,7 @@ const FAQ: Array<{ q: string; a: React.ReactNode }> = [
     a: (
       <p>
         The entire OSR emission for the project&rsquo;s lifetime —{' '}
-        <strong className="text-white">229M OSR</strong> — is pre-minted to a protocol-owned
+        <strong className="text-white">{LIFETIME_EMISSION_LABEL} OSR</strong> — is held in a protocol-owned
         emission reserve contract at genesis. Mint authority is revoked immediately after, so no new
         OSR can ever be created. Each second, the halving curve determines how much OSR flows out to
         users proportional to their grow-power share. Protocol ETH revenue (ERC-20 transfer tax (2%)
@@ -167,7 +168,7 @@ export default function DocsPage() {
             <strong className="text-white">$OSR</strong> tokens to deploy virtual{' '}
             <strong className="text-white">Oil Rigs</strong> and{' '}
             <strong className="text-white">Mining Shafts</strong> on your own 3D compound. Those
-            nodes produce real rewards over time, paid out from a 229M $OSR emission reserve
+            nodes produce real rewards over time, paid out from a {LIFETIME_EMISSION_LABEL} $OSR emission reserve
             released via a Bitcoin-style halving curve.
           </p>
           <p>
@@ -230,7 +231,7 @@ export default function DocsPage() {
                 <>
                   Earns <strong className="text-white">$OSR</strong> via the halving emission
                 </>,
-                <>Funded by the 229M OSR emission reserve</>,
+                <>Funded by the {LIFETIME_EMISSION_LABEL} OSR emission reserve</>,
                 <>
                   <strong className="text-white">Claim-only</strong> in v1 — compound is a Mining
                   Shaft feature

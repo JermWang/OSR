@@ -12,6 +12,27 @@ const client = createPublicClient({
   transport: http(CHAIN.rpcUrl),
 });
 
+/**
+ * Live total supply from the deployed OSR token, in whole units.
+ *
+ * Returns null when the token is not configured yet or the RPC call fails, so
+ * callers fall back to the TOTAL_SUPPLY constant rather than reporting zero.
+ */
+export async function onchainTotalSupply(): Promise<number | null> {
+  if (!isConfiguredAddress(OSR_TOKEN_ADDRESS)) return null;
+  try {
+    const token = getAddress(OSR_TOKEN_ADDRESS);
+    const [supply, decimals] = await Promise.all([
+      client.readContract({ address: token, abi: erc20Abi, functionName: 'totalSupply' }),
+      client.readContract({ address: token, abi: erc20Abi, functionName: 'decimals' }),
+    ]);
+    return Number(formatUnits(supply, decimals));
+  } catch (e) {
+    console.error('[onchain] totalSupply unavailable', e);
+    return null;
+  }
+}
+
 export async function onchainReserves() {
   if (!isConfiguredAddress(OSR_TOKEN_ADDRESS)) return [];
 

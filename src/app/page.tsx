@@ -10,7 +10,7 @@ import { RARITIES } from '@/lib/rarity';
 
 const Scene = dynamic(() => import('@/components/three/Scene'), { ssr: false });
 
-/** Compact figure: 229000000 -> 229M, 12847 -> 12,847. */
+/** Compact figure: 1000000000 -> 1B, 12847 -> 12,847. */
 function compact(n: number): string {
   if (n >= 1e9) return `${(n / 1e9).toFixed(n % 1e9 === 0 ? 0 : 1)}B`;
   if (n >= 1e6) return `${(n / 1e6).toFixed(n % 1e6 === 0 ? 0 : 1)}M`;

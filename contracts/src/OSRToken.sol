@@ -5,9 +5,15 @@ pragma solidity ^0.8.24;
  * @title OSRToken
  * @notice Fixed-supply ERC-20 for the Oil Strategic Reserve.
  *
+ * NOT REQUIRED FOR A FLAP LAUNCH. Flap mints the token itself at its default
+ * 1e9 max supply with 18 decimals, and that contract becomes the OSR token —
+ * point NEXT_PUBLIC_OSR_TOKEN at it and skip deploying this. This file exists
+ * for a self-issued launch, and as the reference the vault and game are written
+ * against (they need only transfer, transferFrom, burn and balanceOf).
+ *
  * The entire supply is minted once in the constructor and there is no mint
- * function, so supply can only ever decrease. This is the on-chain counterpart
- * of TOTAL_SUPPLY in src/lib/economy.ts; the two must agree.
+ * function, so supply can only ever decrease. INITIAL_SUPPLY matches Flap's
+ * default so a self-issued launch behaves identically to a Flap one.
  *
  * Deliberately dependency-free so the deployed bytecode is auditable from this
  * single file with no remapping or library-version drift.
@@ -17,8 +23,9 @@ contract OSRToken {
     string public constant symbol = "OSR";
     uint8 public constant decimals = 18;
 
-    /// @notice 229,000,000 OSR. Matches TOTAL_SUPPLY in economy.ts.
-    uint256 public constant INITIAL_SUPPLY = 229_000_000 * 1e18;
+    /// @notice 1,000,000,000 OSR — Flap's default max supply, and the fallback
+    /// TOTAL_SUPPLY in economy.ts.
+    uint256 public constant INITIAL_SUPPLY = 1_000_000_000 * 1e18;
 
     uint256 public totalSupply;
     mapping(address => uint256) public balanceOf;
