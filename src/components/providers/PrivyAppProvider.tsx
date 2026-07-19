@@ -28,12 +28,14 @@ export default function PrivyAppProvider({ children }: { children: React.ReactNo
       config={{
         defaultChain: robinhoodChain,
         supportedChains: [robinhoodChain],
-        loginMethods: ['email', 'google', 'wallet'],
+        // Wallet only. Email and Google were both non-wallet routes that minted
+        // an embedded wallet on login.
+        loginMethods: ['wallet'],
         appearance: {
           theme: 'dark',
           accentColor: '#f59e0b',
           logo: '/logo.jpg',
-          showWalletLoginFirst: false,
+          showWalletLoginFirst: true,
           walletChainType: 'ethereum-only',
           walletList: [
             'robinhood_wallet',
@@ -43,7 +45,14 @@ export default function PrivyAppProvider({ children }: { children: React.ReactNo
           ],
         },
         embeddedWallets: {
-          ethereum: { createOnLogin: 'all-users' },
+          // Must not be 'all-users' now that wallet is the only login route.
+          // PrivyWalletButton resolves the active account as
+          // `wallets.find(walletClientType === 'privy') ?? wallets[0]`, so an
+          // auto-minted embedded wallet would outrank the wallet the operator
+          // actually connected with and bind their compound to an address they
+          // never chose. Everyone arriving now already has a wallet, so this
+          // creates nothing — and stays correct if a social login is re-added.
+          ethereum: { createOnLogin: 'users-without-wallets' },
           showWalletUIs: true,
           priceDisplay: { primary: 'native-token', secondary: null },
         },

@@ -102,19 +102,24 @@ export default function PrivyWalletButton() {
   if (!authenticated) {
     return (
       <button className="btn-primary !py-1.5 text-sm" onClick={() => login()}>
-        Sign in / Create wallet
+        Connect wallet
       </button>
     );
   }
 
   if (!managedWallet) {
-    return <button className="btn-primary !py-1.5 text-sm" disabled>Creating wallet…</button>;
+    return <button className="btn-primary !py-1.5 text-sm" disabled>Connecting wallet…</button>;
   }
+
+  // Wallet is the only login route, so the account is normally the operator's
+  // own. Only label it as embedded when it genuinely is one.
+  const isEmbedded =
+    managedWallet.walletClientType === 'privy' || managedWallet.walletClientType === 'privy-v2';
 
   return (
     <div className="relative flex items-center gap-2" ref={menuRef}>
       <span className="hidden rounded border border-violet-500/30 bg-violet-500/10 px-2 py-1 font-mono text-[10px] uppercase tracking-wider text-violet-300 sm:block">
-        Privy hot wallet
+        {isEmbedded ? 'Privy hot wallet' : 'Connected wallet'}
       </span>
       <button
         className="rounded border border-steel-500/60 bg-ink-800 px-3 py-1.5 font-mono text-xs text-steel-200 hover:border-amber-500"
@@ -126,10 +131,10 @@ export default function PrivyWalletButton() {
         <div className="absolute right-0 top-full z-50 mt-1 w-72 rounded border border-ink-600 bg-ink-800 p-2 shadow-xl">
           <div className="rounded border border-ink-600 bg-ink-900/60 p-2.5">
             <p className="truncate text-xs text-steel-300">
-              {user?.email?.address ?? 'Privy account'}
+              {shortAddress(managedWallet.address)}
             </p>
             <p className="mt-1 font-mono text-[10px] uppercase tracking-wider text-violet-300">
-              Managed embedded wallet · mainnet
+              {isEmbedded ? 'Managed embedded wallet' : 'Self-custodied wallet'} · mainnet
             </p>
             <div className="mt-3 flex items-center justify-between text-xs">
               <span className="text-steel-400">ETH balance</span>
