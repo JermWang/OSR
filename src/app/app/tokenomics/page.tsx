@@ -15,6 +15,11 @@ import {
   MINT_FEE_ETH,
   LIFETIME_EMISSION_LABEL,
   SUPPLY_LABEL,
+  EMISSION_RESERVE_LABEL,
+  PUBLIC_FLOAT_LABEL,
+  RESERVE_PCT_LABEL,
+  FLOAT_PCT_LABEL,
+  GENESIS_RATE_PER_SEC,
   getCrateCost,
   getShaftBonusSlots,
 } from '@/lib/economy';
@@ -31,15 +36,24 @@ interface FamilyEcon {
   mintFeeEth: number;
 }
 
-const REWARD_FLOW = `Genesis: ${SUPPLY_LABEL} OSR fixed supply; ${LIFETIME_EMISSION_LABEL} allocated to the OSR Emission Reserve
-         (mint authority revoked immediately after distribution)
+// Column widths are padded from the values rather than hardcoded, so the
+// diagram stays aligned if the supply or reserve share is ever retuned.
+const FLOW_COL = 24;
+const FLOW_BOX = 29;
+
+const REWARD_FLOW = `Launch: ${SUPPLY_LABEL} OSR minted by Flap to the bonding curve
+        (fixed supply — the token contract has no mint function)
                 │
-                ▼
-  ┌─────────────────────────────┐
-  │   OSR Emission Reserve      │
-  │   ${LIFETIME_EMISSION_LABEL} OSR allocated      │
-  └──────────────┬──────────────┘
-                 │  halving curve E(t) = 262 × 0.5^(t/7d)
+       ┌────────┴────────┐
+       ▼                 ▼
+ ${`${PUBLIC_FLOAT_LABEL} public float`.padEnd(FLOW_COL)}${EMISSION_RESERVE_LABEL} acquired at genesis
+ ${`(${FLOAT_PCT_LABEL}, trades freely)`.padEnd(FLOW_COL)}(${RESERVE_PCT_LABEL}, funds all rewards)
+                                 │
+  ┌─────────────────────────────┐│
+  │${'   OSR Emission Reserve'.padEnd(FLOW_BOX)}│◀┘
+  │${`   ${EMISSION_RESERVE_LABEL} OSR`.padEnd(FLOW_BOX)}│◀── reserve split on in-game
+  └──────────────┬──────────────┘     spends tops the pool back up
+                 │  halving curve E(t) = ${GENESIS_RATE_PER_SEC.toFixed(1)} × 0.5^(t/7d)
                  ▼
     Each user's per-second rate:
     share = min(userGP / totalGP, 30%) × welcomeBoost(elapsed)
@@ -55,11 +69,11 @@ const REWARD_FLOW = `Genesis: ${SUPPLY_LABEL} OSR fixed supply; ${LIFETIME_EMISS
 
 const HALVING_TABLE = `E(t) = E₀ × 0.5 ^ (t / 7 days)
 
-Day 0  :  262  OSR/sec   (22.6M/day)
-Day 7  :  131  OSR/sec   (11.3M/day, 50% of lifetime emitted)
-Day 14 :  65.5 OSR/sec   (5.66M/day, 75%)
-Day 30 :  13.4 OSR/sec   (1.16M/day, 95%)
-Day 90 :  ~0             (emission effectively extinct)`;
+Day 0  :  248.0 OSR/sec  (21.4M/day)
+Day 7  :  124.0 OSR/sec  (10.7M/day, 50% of lifetime emitted)
+Day 14 :   62.0 OSR/sec  (5.36M/day, 75%)
+Day 30 :   12.7 OSR/sec  (1.10M/day, 95%)
+Day 90 :   ~0            (emission effectively extinct)`;
 
 const USER_RATE = `user_rate = min(user_gp / total_network_gp, 30%) × E(t) × welcome_boost
 
@@ -117,10 +131,12 @@ export default function TokenomicsPage() {
               <strong className="text-white">50/30/20</strong> burn / reserve / treasury.
             </li>
             <li>
-              A halving emission curve (E₀ = 262 OSR/sec, halves every 7 days) distributes OSR from
-              a <strong className="text-white">{LIFETIME_EMISSION_LABEL} reserve</strong>. Each user earns a
-              share proportional to their grow-power, capped at 30% per user to prevent
-              lottery-in-thin-network wins.
+              A halving emission curve (E₀ = {GENESIS_RATE_PER_SEC.toFixed(1)} OSR/sec, halves
+              every 7 days) distributes OSR from the{' '}
+              <strong className="text-white">{EMISSION_RESERVE_LABEL} reserve</strong>. The rate is
+              derived from the reserve rather than fixed, so the schedule spends it exactly and can
+              never promise OSR the protocol does not hold. Each user earns a share proportional to
+              their grow-power, capped at 30% per user to prevent lottery-in-thin-network wins.
             </li>
             <li>
               Under v2 accrual, both <strong className="text-white">Oil Rigs</strong> and{' '}
@@ -233,7 +249,7 @@ export default function TokenomicsPage() {
           <p className="text-sm leading-relaxed text-steel-300">
             Global OSR emission follows a Bitcoin-style halving curve. Starting at{' '}
             <code className="rounded bg-ink-700 px-1 font-mono text-xs text-amber-500">
-              E₀ = 262 OSR/sec
+              E₀ = {GENESIS_RATE_PER_SEC.toFixed(1)} OSR/sec
             </code>{' '}
             at genesis, the rate halves every <strong className="text-white">7 days</strong> until
             the reserve is fully paid out.
@@ -244,9 +260,12 @@ export default function TokenomicsPage() {
             </pre>
           </div>
           <p className="mt-3 text-sm leading-relaxed text-steel-300">
-            Lifetime emission = <strong className="text-white">{LIFETIME_EMISSION_LABEL} OSR</strong> of the {SUPPLY_LABEL} supply, held in the
-            protocol-owned emission reserve contract at genesis. Mint authority is revoked
-            post-distribution — no new supply can ever be created.
+            Lifetime emission ={' '}
+            <strong className="text-white">{LIFETIME_EMISSION_LABEL} OSR</strong> — exactly the{' '}
+            {RESERVE_PCT_LABEL} of the {SUPPLY_LABEL} supply held in the Emission Reserve. The
+            remaining <strong className="text-white">{PUBLIC_FLOAT_LABEL}</strong> ({FLOAT_PCT_LABEL}
+            ) is public float that trades on the Flap curve. Supply is fixed at launch — the token
+            contract has no mint function, so no new OSR can ever be created.
           </p>
           <p className="mt-3 text-sm leading-relaxed text-steel-300">
             Each user earns a proportional share of each second&rsquo;s emission:

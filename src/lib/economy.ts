@@ -151,16 +151,41 @@ export const NODE_FAMILIES: NodeFamilyDef[] = [
  * set, protocolOverview reads totalSupply() straight off the contract and this
  * constant becomes a fallback for the pre-launch period only.
  *
- * Lifetime emission is GENESIS_RATE_PER_SEC * HALVING_PERIOD * 2 (the geometric
- * sum of a halving schedule) = ~316.9M, about 32% of supply. Changing supply
- * without revisiting GENESIS_RATE_PER_SEC changes that ratio.
+ * Emission is sized from this rather than hardcoded, so the schedule can never
+ * promise more OSR than the reserve holds. See EMISSION_RESERVE below.
  */
 export const TOTAL_SUPPLY = Number(
   process.env.NEXT_PUBLIC_OSR_TOTAL_SUPPLY ?? 1_000_000_000
 );
-export const GENESIS_RATE_PER_SEC = 262; // OSR/sec at genesis
+
 export const HALVING_PERIOD_MS = 7 * 24 * 3600 * 1000; // halves weekly
 export const SHARE_CAP = 0.3; // no user captures more than 30% of emission
+
+/**
+ * Share of total supply reserved to pay node rewards.
+ *
+ * On a Flap launch the full 1e9 is minted to the bonding curve; this slice is
+ * acquired at genesis and held as the emission reserve, leaving the remainder
+ * as public float. Rewards are the product here, so a dedicated rewards pool is
+ * the allocation that actually has to exist.
+ */
+export const EMISSION_RESERVE_PCT = Number(
+  process.env.NEXT_PUBLIC_OSR_EMISSION_RESERVE_PCT ?? 0.3
+);
+
+/** OSR set aside at genesis to fund every reward the protocol will ever pay. */
+export const EMISSION_RESERVE = TOTAL_SUPPLY * EMISSION_RESERVE_PCT;
+
+/**
+ * Genesis emission rate, derived so the halving schedule spends exactly the
+ * reserve and not a token more.
+ *
+ * A halving schedule's lifetime sum is rate * period * 2, so inverting it gives
+ * the only rate that makes lifetime emission equal the reserve. Hardcoding the
+ * rate instead is how the previous 262 OSR/sec ended up promising 316.9M
+ * against a 229M supply — 38% more than could ever exist.
+ */
+export const GENESIS_RATE_PER_SEC = EMISSION_RESERVE / ((HALVING_PERIOD_MS / 1000) * 2);
 
 /** Compact figure for display: 1000000000 -> 1B, 316915200 -> 316.9M. */
 export function compactOsr(n: number): string {
@@ -172,14 +197,21 @@ export function compactOsr(n: number): string {
 /**
  * Total OSR ever paid out as rewards, across every halving cycle.
  *
- * A halving schedule's lifetime sum is rate * period * 2, so this is a distinct
- * (and much smaller) figure than TOTAL_SUPPLY. The two were previously conflated
- * in the docs, which quoted supply as the emission total.
+ * Equal to EMISSION_RESERVE by construction, since the genesis rate is derived
+ * from it. Kept as its own name because the docs need to talk about the
+ * schedule's lifetime output and the pool funding it as separate ideas.
  */
 export const LIFETIME_EMISSION = GENESIS_RATE_PER_SEC * (HALVING_PERIOD_MS / 1000) * 2;
 
+/** Supply left circulating on the curve once the reserve is set aside. */
+export const PUBLIC_FLOAT = TOTAL_SUPPLY - EMISSION_RESERVE;
+
 export const SUPPLY_LABEL = compactOsr(TOTAL_SUPPLY);
 export const LIFETIME_EMISSION_LABEL = compactOsr(LIFETIME_EMISSION);
+export const EMISSION_RESERVE_LABEL = compactOsr(EMISSION_RESERVE);
+export const PUBLIC_FLOAT_LABEL = compactOsr(PUBLIC_FLOAT);
+export const RESERVE_PCT_LABEL = `${Math.round(EMISSION_RESERVE_PCT * 100)}%`;
+export const FLOAT_PCT_LABEL = `${Math.round((1 - EMISSION_RESERVE_PCT) * 100)}%`;
 
 export function emissionRateAt(genesisMs: number, nowMs: number): number {
   const cycle = Math.max(0, Math.floor((nowMs - genesisMs) / HALVING_PERIOD_MS));

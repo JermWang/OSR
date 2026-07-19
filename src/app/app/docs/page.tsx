@@ -5,7 +5,15 @@ import Link from 'next/link';
 import PageShell from '@/components/ui/PageShell';
 import ComponentTile from '@/components/ui/ComponentTile';
 import NodePreview from '@/components/three/NodePreview';
-import { LIFETIME_EMISSION_LABEL, SUPPLY_LABEL } from '@/lib/economy';
+import {
+  LIFETIME_EMISSION_LABEL,
+  SUPPLY_LABEL,
+  EMISSION_RESERVE_LABEL,
+  PUBLIC_FLOAT_LABEL,
+  RESERVE_PCT_LABEL,
+  FLOAT_PCT_LABEL,
+  GENESIS_RATE_PER_SEC,
+} from '@/lib/economy';
 import { AURA_TIERS } from '@/lib/aura';
 import {
   COMPOUND_FEE_ETH,
@@ -38,13 +46,14 @@ const CONTENTS: Array<{ href: string; label: string }> = [
 
 const rarityLabel = (r: Rarity) => r.charAt(0).toUpperCase() + r.slice(1);
 
-const EMISSION_CURVE = `E(t) = 262 OSR/sec × 0.5 ^ (t / 7d)
+const EMISSION_CURVE = `E(t) = ${GENESIS_RATE_PER_SEC.toFixed(1)} OSR/sec × 0.5 ^ (t / 7d)
 
-Day 0  : 22.6M OSR emitted
+Day 0  : 21.4M OSR emitted
 Day 7  : 50% of lifetime already emitted
 Day 14 : 75% emitted
 Day 30 : 95% emitted
-Lifetime total: ${LIFETIME_EMISSION_LABEL} OSR emitted from a ${SUPPLY_LABEL} fixed supply`;
+Lifetime total: ${LIFETIME_EMISSION_LABEL} OSR — the whole Emission Reserve,
+${RESERVE_PCT_LABEL} of the ${SUPPLY_LABEL} fixed supply`;
 
 const USER_RATE = `user_rate = min(your_gp / network_gp, 30%) × E(t) × welcome_boost
 
@@ -89,11 +98,14 @@ const FAQ: Array<{ q: string; a: React.ReactNode }> = [
     q: 'Where does the reward money come from?',
     a: (
       <p>
-        The entire OSR emission for the project&rsquo;s lifetime —{' '}
-        <strong className="text-white">{LIFETIME_EMISSION_LABEL} OSR</strong> — is held in a protocol-owned
-        emission reserve contract at genesis. Mint authority is revoked immediately after, so no new
-        OSR can ever be created. Each second, the halving curve determines how much OSR flows out to
-        users proportional to their grow-power share. Protocol ETH revenue (ERC-20 transfer tax (2%)
+        OSR launches on Flap: the full <strong className="text-white">{SUPPLY_LABEL}</strong> supply
+        is minted to the bonding curve and the contract has no mint function, so no new OSR can ever
+        be created. Of that, <strong className="text-white">{EMISSION_RESERVE_LABEL} OSR</strong> (
+        {RESERVE_PCT_LABEL}) is acquired at genesis and held as the Emission Reserve, which funds
+        every reward the protocol will ever pay. The other {PUBLIC_FLOAT_LABEL} ({FLOAT_PCT_LABEL})
+        is public float. Each second, the halving curve determines how much OSR flows out to users
+        proportional to their grow-power share, and the reserve split on in-game spends recycles OSR
+        back into the pool. Protocol ETH revenue (ERC-20 transfer tax (2%)
         + DEX LP fees (2%)) goes to a separate treasury and funds infrastructure/ops, not user
         rewards. The{' '}
         <Link href="/app/vault" className="text-amber-500 hover:underline">
@@ -168,8 +180,8 @@ export default function DocsPage() {
             <strong className="text-white">$OSR</strong> tokens to deploy virtual{' '}
             <strong className="text-white">Oil Rigs</strong> and{' '}
             <strong className="text-white">Mining Shafts</strong> on your own 3D compound. Those
-            nodes produce real rewards over time, paid out from a {LIFETIME_EMISSION_LABEL} $OSR emission reserve
-            released via a Bitcoin-style halving curve.
+            nodes produce real rewards over time, paid out from a {EMISSION_RESERVE_LABEL} $OSR
+            Emission Reserve released via a Bitcoin-style halving curve.
           </p>
           <p>
             Think of it like an incremental game where every action is on-chain: your rigs and
@@ -231,7 +243,7 @@ export default function DocsPage() {
                 <>
                   Earns <strong className="text-white">$OSR</strong> via the halving emission
                 </>,
-                <>Funded by the {LIFETIME_EMISSION_LABEL} OSR emission reserve</>,
+                <>Funded by the {EMISSION_RESERVE_LABEL} OSR Emission Reserve</>,
                 <>
                   <strong className="text-white">Claim-only</strong> in v1 — compound is a Mining
                   Shaft feature
@@ -552,9 +564,10 @@ export default function DocsPage() {
         <Section id="emission" title="9. How emission works">
           <p>
             OSR uses a <strong className="text-white">halving emission curve</strong>. Global OSR
-            issuance starts at <strong className="text-white">262 OSR/sec</strong> at genesis and
-            halves every <strong className="text-white">7 days</strong> until the lifetime supply is
-            fully paid out.
+            issuance starts at{' '}
+            <strong className="text-white">{GENESIS_RATE_PER_SEC.toFixed(1)} OSR/sec</strong> at
+            genesis and halves every <strong className="text-white">7 days</strong> until the
+            Emission Reserve is fully paid out.
           </p>
           <div className="panel overflow-x-auto p-4">
             <pre className="font-mono text-[11px] leading-relaxed text-steel-300">

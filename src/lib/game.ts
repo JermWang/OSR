@@ -36,6 +36,7 @@ import {
   XSTOCK_MIN_COMPOUND_LEVEL,
   XSTOCK_ACCRUAL_RATE,
   TOTAL_SUPPLY,
+  EMISSION_RESERVE,
   STARTER_OSR_GRANT,
 } from './economy';
 import { NODE_SLOTS, RARITIES, type NodeFamily, type Rarity } from './rarity';
@@ -912,7 +913,9 @@ export function protocolOverview() {
     totalSupply: TOTAL_SUPPLY,
     totalOsrBurned: counters.burned,
     totalCreatorRewardsProcessed: counters.solRevenue,
-    osrReserveBalance: Math.max(0, TOTAL_SUPPLY - counters.emitted + counters.reserve),
+    // What is left in the rewards pool, not the whole supply: emission draws
+    // from the reserve, and the reserve split on in-game spends tops it back up.
+    osrReserveBalance: Math.max(0, EMISSION_RESERVE - counters.emitted + counters.reserve),
     xomxReserveBalance: 0,
     cvxxReserveBalance: 0,
     treasury: counters.treasury,

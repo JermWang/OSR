@@ -1,6 +1,6 @@
 import { handle } from '@/lib/api-util';
 import { genesisMs } from '@/lib/game';
-import { emissionRateAt, GENESIS_RATE_PER_SEC, HALVING_PERIOD_MS, TOTAL_SUPPLY } from '@/lib/economy';
+import { emissionRateAt, GENESIS_RATE_PER_SEC, HALVING_PERIOD_MS, EMISSION_RESERVE } from '@/lib/economy';
 
 export const dynamic = 'force-dynamic';
 
@@ -18,7 +18,7 @@ export async function GET() {
       points.push({
         t: start,
         ratePerSec: rate,
-        distributedPct: Math.min(100, (distributed / TOTAL_SUPPLY) * 100),
+        distributedPct: Math.min(100, (distributed / EMISSION_RESERVE) * 100),
       });
     }
     return { genesisMs: g, now, currentRatePerSec: emissionRateAt(g, now), points };
