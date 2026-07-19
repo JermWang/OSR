@@ -14,22 +14,35 @@ export default {
           600: '#c9761a',
           700: '#9b5513',
         },
+        // Robinhood's palette is rooted in black, white and neutrals with
+        // pops of its signature green. The previous ink/steel ramps carried a
+        // blue cast, which was the main thing reading as off-brand — these are
+        // the same lightness steps with the blue removed.
         ink: {
-          950: '#06080d',
-          900: '#0a0d15',
-          850: '#0e131e',
-          800: '#121a29',
-          750: '#172033',
-          700: '#1d2739',
-          600: '#2a3548',
+          950: '#060606',
+          900: '#0b0b0b',
+          850: '#101010',
+          800: '#171717',
+          750: '#1d1d1d',
+          700: '#242424',
+          600: '#333333',
         },
         steel: {
-          100: '#eef1f7',
-          200: '#d5dbe6',
-          300: '#aeb7c7',
-          400: '#8791a5',
-          500: '#5f6a80',
-          600: '#414b5e',
+          100: '#f4f4f4',
+          200: '#dedede',
+          300: '#b5b5b5',
+          400: '#8e8e8e',
+          500: '#6b6b6b',
+          600: '#4a4a4a',
+        },
+        // Robinhood Green (#00C805). Overriding Tailwind's emerald scale so
+        // every existing emerald-* utility picks it up without touching call
+        // sites; 400 is the brand value.
+        emerald: {
+          300: '#4dff52',
+          400: '#00c805',
+          500: '#00b004',
+          600: '#009103',
         },
         rarity: {
           common: '#b0b0b0',

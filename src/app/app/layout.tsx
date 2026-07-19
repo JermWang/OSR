@@ -24,10 +24,10 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
   return (
     <div className="app-surface flex min-h-screen flex-col">
       <div className="border-b border-emerald-500/20 bg-gradient-to-r from-transparent via-emerald-500/10 to-transparent py-[5px] text-center font-mono text-[10.5px] uppercase tracking-[.24em] text-emerald-400">
-        <span className="mr-2 inline-block h-1.5 w-1.5 rounded-full bg-emerald-400 shadow-[0_0_8px_#34d399]" />
+        <span className="mr-2 inline-block h-1.5 w-1.5 rounded-full bg-emerald-400 shadow-[0_0_8px_#00c805]" />
         {CHAIN.name} — Mainnet · chain {CHAIN.id} · gas ETH
       </div>
-      <div className="sticky top-0 z-40 border-b border-white/[.07] bg-[#080b12]/90 shadow-[0_18px_50px_-34px_rgba(0,0,0,.95)] backdrop-blur-xl">
+      <div className="sticky top-0 z-40 border-b border-white/[.07] bg-[#080808]/90 shadow-[0_18px_50px_-34px_rgba(0,0,0,.95)] backdrop-blur-xl">
         <header className="flex items-center gap-3 border-b border-white/[.07] px-4 py-2.5 md:px-[22px]">
           <Link href="/" className="flex items-center gap-2.5">
             {/* eslint-disable-next-line @next/next/no-img-element */}

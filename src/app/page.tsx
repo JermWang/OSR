@@ -63,7 +63,7 @@ export default function Landing() {
   }, []);
 
   return (
-    <main className="relative min-h-[max(100vh,760px)] overflow-hidden bg-[#0a0a1e] md:h-screen md:min-h-[680px]">
+    <main className="relative min-h-[max(100vh,760px)] overflow-hidden bg-[#080808] md:h-screen md:min-h-[680px]">
       <div className="absolute inset-0 z-[3]">
         <Scene nodes={SHOWROOM_NODES} preset="sunset" selectedNodeId={null} focusNodeId={null} variant="landing" />
       </div>
@@ -97,7 +97,7 @@ export default function Landing() {
         </div>
         <div className="ml-auto hidden items-center gap-3 sm:flex">
           <div className="glass-control flex items-center gap-2 rounded-full border-emerald-400/35 px-4 py-2 font-mono text-[10px] uppercase tracking-[.14em] text-emerald-300">
-            <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 shadow-[0_0_8px_#34d399]" />
+            <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 shadow-[0_0_8px_#00c805]" />
             Season 1 · Halving live
           </div>
           <Link href="/app" className="glass-control pointer-events-auto flex items-center gap-2 rounded-full border-amber-400/40 px-4 py-2 font-mono text-[10px] font-semibold uppercase tracking-[.12em] text-amber-300 transition hover:bg-amber-500/15">

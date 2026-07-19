@@ -7,11 +7,11 @@
   --accent-bright: #ffc656;
   --accent-deep: #c9761a;
   --accent-soft: rgba(245, 166, 35, 0.12);
-  --petrol: #37c7b6;
-  --emerald: #34d399;
-  --line: rgba(148, 163, 184, 0.12);
+  --petrol: #00c805;
+  --emerald: #00c805;
+  --line: rgba(255, 255, 255, 0.10);
   --gold: linear-gradient(135deg, #ffe0a3 0%, #f5a623 42%, #c9761a 100%);
-  --panel-bg: linear-gradient(180deg, rgba(255,255,255,.035), rgba(255,255,255,0) 60%), #111827;
+  --panel-bg: linear-gradient(180deg, rgba(255,255,255,.035), rgba(255,255,255,0) 60%), #131313;
   --panel-shadow: 0 1px 0 rgba(255,255,255,.045) inset, 0 16px 40px -24px rgba(0,0,0,.95);
   --sky-a: #2b1a3a;
   --sky-b: #a3423c;
@@ -38,9 +38,9 @@ body {
   @apply bg-ink-950 text-steel-200 antialiased;
   font-family: var(--font-display), system-ui, sans-serif;
   background:
-    radial-gradient(1200px 640px at 78% 112%, rgba(245,166,35,.14), transparent 60%),
-    radial-gradient(900px 520px at 12% -8%, rgba(55,199,182,.065), transparent 55%),
-    linear-gradient(180deg, #080b12 0%, #0a0d15 42%, #0c0f18 100%);
+    radial-gradient(1200px 640px at 78% 112%, rgba(245,166,35,.12), transparent 60%),
+    radial-gradient(900px 520px at 12% -8%, rgba(0,200,5,.07), transparent 55%),
+    linear-gradient(180deg, #080808 0%, #0b0b0b 42%, #0e0e0e 100%);
   text-rendering: optimizeLegibility;
 }
 
@@ -61,7 +61,7 @@ textarea:focus-visible {
 ::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb {
   @apply rounded-md bg-steel-600;
-  border: 2px solid #06080d;
+  border: 2px solid #060606;
 }
 
 .panel {
@@ -87,7 +87,7 @@ textarea:focus-visible {
 .btn-secondary {
   @apply rounded-[11px] border px-4 py-2.5 font-semibold text-steel-200 transition disabled:cursor-not-allowed disabled:opacity-40;
   border-color: var(--line);
-  background: #121a29;
+  background: #171717;
 }
 
 .btn-secondary:hover:not(:disabled) {
@@ -107,7 +107,7 @@ textarea:focus-visible {
 
 .glass-control {
   border: 1px solid var(--line);
-  background: rgba(10,13,21,.82);
+  background: rgba(11,11,11,.82);
   box-shadow: 0 18px 40px -22px rgba(0,0,0,.95);
   backdrop-filter: blur(12px);
 }

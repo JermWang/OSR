@@ -26,7 +26,7 @@ function NodeChip({ type, abbrev }: { type: 'oil' | 'mine'; abbrev?: boolean }) 
       className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 font-mono text-[9px] uppercase tracking-wider"
       style={{
         background: 'rgba(107,117,128,0.12)',
-        border: '1px solid rgba(148,163,184,0.45)',
+        border: '1px solid rgba(255,255,255,0.28)',
         color: '#cbd5e1',
       }}
     >
@@ -445,7 +445,7 @@ export default function InventoryPage() {
                           <p
                             className="truncate font-mono text-[10px]"
                             style={{
-                              color: comp ? rarityHex(asRarity(comp.rarity)) : '#5f6a80',
+                              color: comp ? rarityHex(asRarity(comp.rarity)) : '#6b6b6b',
                             }}
                           >
                             {comp ? rarityLabel(comp.rarity) : '— empty —'}
