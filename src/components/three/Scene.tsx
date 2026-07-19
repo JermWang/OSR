@@ -11,26 +11,72 @@ import { Compound, type LightingPreset, nodePosition } from './Compound';
 import type { RigNodeData } from './NodeRig';
 import type { OrbitControls as OrbitControlsImpl } from 'three-stdlib';
 
+/**
+ * Landing framing.
+ *
+ * A perspective camera's FOV is vertical, so a portrait viewport keeps the
+ * same height and squeezes the width. The wide desktop shot spans roughly 37
+ * world units and comfortably holds both the oil rig (x -13) and the mining
+ * shaft (x +9); at a 390px-wide viewport the same camera sees under 10 units
+ * and frames the empty sand between them instead of either rig.
+ *
+ * Portrait therefore gets its own shot: pushed in on the oil rig with a wider
+ * FOV, so the hero of the scene is actually on screen behind the copy.
+ */
+const LANDING_WIDE = {
+  target: new THREE.Vector3(-2, 2.6, -11),
+  position: new THREE.Vector3(1, 9.5, 15),
+  fov: 42,
+};
+const LANDING_NARROW = {
+  target: new THREE.Vector3(-13, 3, -12),
+  position: new THREE.Vector3(-7, 9.5, 9),
+  fov: 55,
+};
+/**
+ * Aspect below which the wide shot stops holding both rigs.
+ *
+ * The wide camera sits ~27 units from its target at a 42 degree vertical FOV,
+ * so its visible half-width is about 10.3 * aspect. The rigs sit 11 units
+ * either side of that target and need roughly 14 units of half-width to clear
+ * their own footprints, which only happens above ~1.35. Tablets in portrait
+ * (0.75) and even 1024x768 (1.33) fall short, so they get the single-rig shot
+ * rather than a framing of the sand between them.
+ */
+const NARROW_ASPECT = 1.35;
+
 function CameraRig({ focus, landing = false }: { focus: [number, number, number] | null; landing?: boolean }) {
   const controls = useRef<OrbitControlsImpl>(null);
-  const { camera } = useThree();
+  const { camera, size } = useThree();
+  const narrow = landing && size.width / size.height < NARROW_ASPECT;
+  const shot = narrow ? LANDING_NARROW : LANDING_WIDE;
   const desiredTarget = useRef(new THREE.Vector3(-2, landing ? 2.6 : 2, landing ? -11 : -6));
   const desiredPosition = useRef(new THREE.Vector3(landing ? 1 : 1, landing ? 9.5 : 22, landing ? 15 : 36));
   const transitioning = useRef(false);
+
+  // Widen the lens on narrow viewports so the rig can be framed from closer in
+  // without its platform spilling out of the sides.
+  useEffect(() => {
+    if (!landing) return;
+    const perspective = camera as THREE.PerspectiveCamera;
+    if (perspective.fov === shot.fov) return;
+    perspective.fov = shot.fov;
+    perspective.updateProjectionMatrix();
+  }, [camera, landing, shot.fov]);
 
   useEffect(() => {
     if (focus) {
       desiredTarget.current.set(focus[0], 3.2, focus[2]);
       desiredPosition.current.set(focus[0] + 12, 10, focus[2] + 14);
     } else if (landing) {
-      desiredTarget.current.set(-2, 2.6, -11);
-      desiredPosition.current.set(1, 9.5, 15);
+      desiredTarget.current.copy(shot.target);
+      desiredPosition.current.copy(shot.position);
     } else {
       desiredTarget.current.set(-2, 2, -6);
       desiredPosition.current.set(1, 22, 36);
     }
     transitioning.current = true;
-  }, [focus, landing]);
+  }, [focus, landing, shot]);
 
   useFrame((_, delta) => {
     const c = controls.current;
