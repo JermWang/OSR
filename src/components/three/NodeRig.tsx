@@ -298,9 +298,9 @@ export function NodeRig({
       <group scale={scale}>
         <primitive object={themed.scene} />
       </group>
-      {theme.ring > 0 && (
-        <GroundGlow color={theme.pigment} radius={targetSize * 0.6} opacity={0.08 + 0.1 * theme.ring} />
-      )}
+      {/* Flat 2D yellow highlight circle — the single ground ring under a rig.
+          Sized to clear the wider mine platform so it reads around both types. */}
+      <GroundGlow color="#ffc23d" radius={targetSize * 0.74} opacity={0.85} />
       <group scale={targetSize / 4.8}>
         <RarityAura components={node.components} isActive={active} />
       </group>

@@ -6,18 +6,17 @@
 import { useMemo, useRef } from 'react';
 import * as THREE from 'three';
 import { useFrame } from '@react-three/fiber';
-import { Sparkles, Float } from '@react-three/drei';
+import { Sparkles } from '@react-three/drei';
 import { RARITY_ORDER, RARITY_COLOR, rarityTier } from './fx';
 import type { Rarity } from '@/lib/rarity';
 
 /**
- * Flat digital deploy-pad under each rig. Replaces the old soft additive radial
- * bloom (which read as a 3D volume of light) with a crisp, 2D HUD-style decal:
- * a thin filled disc, hard-edged perimeter and inner rings, radial tick marks,
- * and a slow radar sweep. Normal blending (not additive) keeps it reading as a
- * flat marking on the sand rather than a glow.
+ * Flat 2D highlight circle under each rig — a game-style selection/range ring.
+ * A single bold ring on the ground with a faint interior wash (to read as a
+ * "radius"), a thin outer ring, and slowly rotating dash segments for a digital
+ * feel. No torus, no 3D geometry: it is a flat decal that always faces up.
  */
-export function GroundGlow({ color, radius, opacity = 0.22 }: { color: string; radius: number; opacity?: number }) {
+export function GroundGlow({ color, radius, opacity = 0.85 }: { color: string; radius: number; opacity?: number }) {
   const mat = useRef<THREE.ShaderMaterial>(null);
   useFrame(({ clock }) => {
     if (mat.current) mat.current.uniforms.uTime.value = clock.elapsedTime;
@@ -43,21 +42,20 @@ void main(){
   if (d > 1.0) discard;
   float aa = fwidth(d) * 1.5;
 
-  // Thin flat fill with a hard outer cut — a solid pad, not a soft gradient.
-  float fill = (1.0 - smoothstep(0.90 - aa, 0.90, d)) * 0.16;
-  // Crisp perimeter + inner rings.
-  float outer = smoothstep(0.020 + aa, 0.020, abs(d - 0.90)) * 0.6;
-  float inner = smoothstep(0.014 + aa, 0.014, abs(d - 0.52)) * 0.42;
-  // Radial tick marks around the pad (16 ticks) — digital markers.
-  float ang = atan(p.y, p.x);
-  float ticks = step(0.86, abs(sin(ang * 8.0))) * smoothstep(0.03 + aa, 0.03, abs(d - 0.72)) * 0.5;
-  // Slow radar sweep for a subtle digital pulse.
-  float sweepAng = mod(ang - uTime * 0.7, 6.28318);
-  float sweep = smoothstep(0.7, 0.0, sweepAng) * (1.0 - smoothstep(0.86, 0.90, d)) * 0.10;
+  // Faint interior wash so the circle reads as a covered radius.
+  float fill = (1.0 - smoothstep(0.86 - aa, 0.86, d)) * 0.09;
+  // The bold main highlight ring.
+  float ring = smoothstep(0.030 + aa, 0.030, abs(d - 0.86));
+  // Thin outer perimeter ring.
+  float outer = smoothstep(0.012 + aa, 0.012, abs(d - 0.965)) * 0.55;
+  // Rotating dash segments sitting on the main ring — the "digital" read.
+  float ang = atan(p.y, p.x) + uTime * 0.5;
+  float dash = step(0.5, fract(ang / 6.28318 * 40.0));
+  float dashes = smoothstep(0.055 + aa, 0.055, abs(d - 0.86)) * dash * 0.5;
 
-  float glow = fill + outer + inner + ticks + sweep;
-  float a = glow * (0.85 + 0.15 * sin(uTime * 1.5)) * (0.5 + 1.7 * uOpacity);
-  gl_FragColor = vec4(uColor, clamp(a, 0.0, 0.9));
+  float glow = fill + ring + outer + dashes;
+  float pulse = 0.9 + 0.1 * sin(uTime * 1.6);
+  gl_FragColor = vec4(uColor, clamp(glow * pulse * uOpacity, 0.0, 0.9));
 }`}
       />
     </mesh>
@@ -111,93 +109,6 @@ export function Motes({ color, count, area, size = 4, speed = 0.3 }: { color: st
       color={color}
       opacity={0.8}
     />
-  );
-}
-
-function OrbitRing({ radius, tube, y, speed, color, intensity, active }: { radius: number; tube: number; y: number; speed: number; color: string; intensity: number; active: boolean }) {
-  const group = useRef<THREE.Group>(null);
-  useFrame((_, dt) => {
-    if (group.current && active) group.current.rotation.y += dt * speed;
-  });
-  return (
-    <group ref={group} position={[0, y, 0]}>
-      <mesh rotation={[Math.PI / 2, 0, 0]}>
-        <torusGeometry args={[radius, tube, 8, 64]} />
-        <meshStandardMaterial
-          emissive={color}
-          emissiveIntensity={intensity}
-          color="#000000"
-          metalness={0.1}
-          roughness={0.3}
-          toneMapped={false}
-        />
-      </mesh>
-    </group>
-  );
-}
-
-function makeRuneTexture(): THREE.CanvasTexture {
-  const canvas = document.createElement('canvas');
-  canvas.width = 2048;
-  canvas.height = 256;
-  const ctx = canvas.getContext('2d')!;
-  ctx.clearRect(0, 0, 2048, 256);
-  ctx.fillStyle = '#ffffff';
-  ctx.font = 'bold 120px "Courier New", monospace';
-  ctx.textAlign = 'center';
-  ctx.textBaseline = 'middle';
-  const glyphs = ['◆', '◇', '▲', '△', '○', '◎', '★', '☆', '✦', '✧', '⧫', '✶', 'Ω', '∞', 'Ψ', 'Δ'];
-  glyphs.forEach((g, i) => ctx.fillText(g, (i + 0.5) * (2048 / glyphs.length), 128));
-  ctx.strokeStyle = 'rgba(255,255,255,.85)';
-  ctx.lineWidth = 4;
-  for (const dy of [-90, 90]) {
-    ctx.beginPath();
-    ctx.moveTo(0, 128 + dy);
-    ctx.lineTo(2048, 128 + dy);
-    ctx.stroke();
-  }
-  ctx.strokeStyle = 'rgba(255,255,255,.6)';
-  ctx.lineWidth = 3;
-  for (let i = 0; i < 32; i++) {
-    const x = (i + 0.5) * (2048 / 32);
-    ctx.beginPath();
-    ctx.moveTo(x, 128 - 60);
-    ctx.lineTo(x, 128 + 60);
-    ctx.stroke();
-  }
-  const tex = new THREE.CanvasTexture(canvas);
-  tex.wrapS = THREE.RepeatWrapping;
-  tex.wrapT = THREE.ClampToEdgeWrapping;
-  tex.anisotropy = 4;
-  return tex;
-}
-
-function RuneRing({ radius, y, color, intensity, active }: { radius: number; y: number; color: string; intensity: number; active: boolean }) {
-  const group = useRef<THREE.Group>(null);
-  const tex = useMemo(makeRuneTexture, []);
-  const hdrColor = useMemo(
-    () => new THREE.Color(color).multiplyScalar(Math.max(1, 2.2 * intensity)),
-    [color, intensity]
-  );
-  useFrame((_, dt) => {
-    if (group.current && active) group.current.rotation.y += dt * 0.08;
-  });
-  const flat: [number, number, number] = [-Math.PI / 2, 0, 0];
-  return (
-    <group ref={group} position={[0, y, 0]}>
-      <mesh rotation={flat} renderOrder={2}>
-        <ringGeometry args={[radius - 0.35, radius, 64]} />
-        <meshBasicMaterial map={tex} color={hdrColor} transparent opacity={0.5} side={THREE.DoubleSide} blending={THREE.AdditiveBlending} depthWrite={false} toneMapped={false} />
-      </mesh>
-      <mesh rotation={flat} renderOrder={2}>
-        <ringGeometry args={[radius - 0.02, radius, 64]} />
-        <meshBasicMaterial color={color} transparent opacity={0.1} side={THREE.DoubleSide} blending={THREE.AdditiveBlending} depthWrite={false} toneMapped={false} />
-      </mesh>
-      <mesh rotation={flat} renderOrder={2}>
-        <ringGeometry args={[radius - 0.38, radius - 0.35, 64]} />
-        <meshBasicMaterial color={color} transparent opacity={0.15} side={THREE.DoubleSide} blending={THREE.AdditiveBlending} depthWrite={false} toneMapped={false} />
-      </mesh>
-    </group>
   );
 }
 
@@ -283,57 +194,20 @@ export function RarityAura({
   const color = RARITY_COLOR[rarity];
   const d = lowPerf ? Math.floor((10 + 10 * tier) / 2) : 10 + 12 * tier;
 
+  // No ground rings here — the flat highlight circle (GroundGlow) is the only
+  // ring under a rig now. RarityAura contributes rarity flair *above* the rig
+  // (drifting sparkles, and a light column / beam at the top tiers) so higher
+  // rarities still feel special without stacking 3D rings on the base.
   return (
     <group>
-      <mesh position={[0, 0.02, 0]} rotation={[-Math.PI / 2, 0, 0]} renderOrder={1}>
-        <ringGeometry args={[1.6, 2.2, 64]} />
-        <meshBasicMaterial color={color} transparent opacity={0.1} side={THREE.DoubleSide} blending={THREE.AdditiveBlending} depthWrite={false} toneMapped={false} />
-      </mesh>
-      {tier >= 2 && <OrbitRing radius={2} tube={0.04} y={0.1} speed={isActive ? 0.25 : 0} color={color} intensity={1.6} active={isActive} />}
-      {tier >= 3 && (
-        <>
-          <OrbitRing radius={2.35} tube={0.035} y={0.15} speed={isActive ? -0.18 : 0} color={color} intensity={1.8} active={isActive} />
-          {isActive && <Sparkles count={Math.floor(0.4 * d)} scale={[4, 1.5, 4]} size={1.3} speed={0.3} position={[0, 0.7, 0]} color={color} opacity={0.18} />}
-        </>
+      {tier >= 3 && isActive && (
+        <Sparkles count={Math.floor(0.4 * d)} scale={[4, 1.5, 4]} size={1.3} speed={0.3} position={[0, 0.7, 0]} color={color} opacity={0.18} />
       )}
-      {tier >= 4 && (
-        <>
-          <RuneRing radius={1.95} y={0.025} color={color} intensity={1.8} active={isActive} />
-          {isActive && !lowPerf && <Sparkles count={Math.floor(0.6 * d)} scale={[2.2, 4, 2.2]} size={1} speed={0.6} position={[0, 2, 0]} color={color} opacity={0.16} />}
-        </>
+      {tier >= 4 && isActive && !lowPerf && (
+        <Sparkles count={Math.floor(0.6 * d)} scale={[2.2, 4, 2.2]} size={1} speed={0.6} position={[0, 2, 0]} color={color} opacity={0.16} />
       )}
-      {tier === 5 && (
-        <>
-          <HaloCylinder radius={1.2} height={3.2} color={color} intensity={2.2} />
-          <mesh position={[0, 1.8, 0]} rotation={[Math.PI / 2, 0, 0]} renderOrder={6}>
-            <torusGeometry args={[1.85, 0.035, 8, 64]} />
-            <meshStandardMaterial emissive={color} emissiveIntensity={2.2} color="#000000" metalness={0} roughness={0.2} toneMapped={false} />
-          </mesh>
-        </>
-      )}
-      {tier >= 6 && (
-        <>
-          <DivineBeam color={color} />
-          <group position={[0, 3, 0]}>
-            <Float speed={0.6} floatIntensity={0.3} rotationIntensity={0.2}>
-              <mesh rotation={[Math.PI / 2 + 0.25, 0, 0]}>
-                <torusGeometry args={[1.1, 0.03, 10, 64]} />
-                <meshStandardMaterial emissive={color} emissiveIntensity={2.4} color="#000000" metalness={0} roughness={0.2} toneMapped={false} />
-              </mesh>
-            </Float>
-            <Float speed={0.5} floatIntensity={0.3} rotationIntensity={0.25}>
-              <mesh position={[0, 0.6, 0]} rotation={[Math.PI / 2 - 0.18, 0, 0.12]}>
-                <torusGeometry args={[0.75, 0.025, 10, 48]} />
-                <meshStandardMaterial emissive={color} emissiveIntensity={2.6} color="#000000" metalness={0} roughness={0.2} toneMapped={false} />
-              </mesh>
-            </Float>
-          </group>
-          <mesh position={[0, 0.015, 0]} rotation={[-Math.PI / 2, 0, 0]} renderOrder={1}>
-            <ringGeometry args={[2.45, 2.55, 64]} />
-            <meshBasicMaterial color={color} transparent opacity={0.1} side={THREE.DoubleSide} blending={THREE.AdditiveBlending} depthWrite={false} toneMapped={false} />
-          </mesh>
-        </>
-      )}
+      {tier === 5 && <HaloCylinder radius={1.2} height={3.2} color={color} intensity={2.2} />}
+      {tier >= 6 && <DivineBeam color={color} />}
     </group>
   );
 }
