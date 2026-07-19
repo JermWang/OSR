@@ -5,12 +5,12 @@ import WalletButton from '@/components/ui/WalletButton';
 import DisclaimerModal from '@/components/ui/DisclaimerModal';
 import NavBar from '@/components/ui/NavBar';
 import { useEvmWallet } from '@/lib/evm';
-import { CHAIN, CONTRACTS_CONFIGURED } from '@/lib/config';
+import { CHAIN, TOKEN_LIVE } from '@/lib/config';
 
 function OsrBalancePill() {
   const osrBalance = useEvmWallet((state) => state.osrBalance);
   const symbol = useEvmWallet((state) => state.osrSymbol);
-  if (!CONTRACTS_CONFIGURED || osrBalance == null) return null;
+  if (!TOKEN_LIVE || osrBalance == null) return null;
   return (
     <div className="hidden items-center gap-2 rounded-[10px] border border-amber-500/30 bg-ink-800 px-3 py-2 font-mono text-xs text-amber-300 sm:flex">
       <span className="grid h-4 w-4 place-items-center rounded-full bg-gradient-to-br from-amber-100 via-amber-400 to-amber-700 text-[7px] text-[#3a1e05]">◆</span>

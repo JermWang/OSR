@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   CHAIN,
-  CONTRACTS_CONFIGURED,
+  TOKEN_LIVE,
   ZERO_ADDRESS,
   isConfiguredAddress,
 } from './config';
@@ -13,8 +13,8 @@ describe('Robinhood Chain configuration', () => {
     expect(CHAIN.rpcUrl).toContain('mainnet');
   });
 
-  it('keeps financial actions locked for zero-address deployments', () => {
+  it('treats the zero address as unconfigured so the token cannot read as live', () => {
     expect(isConfiguredAddress(ZERO_ADDRESS)).toBe(false);
-    expect(CONTRACTS_CONFIGURED).toBe(false);
+    expect(TOKEN_LIVE).toBe(false);
   });
 });

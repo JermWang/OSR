@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useIdentityToken, usePrivy, useWallets } from '@privy-io/react-auth';
 import { api } from '@/lib/api-client';
-import { CHAIN, CONTRACTS_CONFIGURED } from '@/lib/config';
+import { CHAIN, TOKEN_LIVE } from '@/lib/config';
 import { type Eip1193Provider, shortAddress, useEvmWallet } from '@/lib/evm';
 import { useWalletStore } from '@/lib/store';
 import { useOperation } from '@/lib/useOperation';
@@ -143,9 +143,9 @@ export default function PrivyWalletButton() {
             <div className="mt-1.5 flex items-center justify-between text-xs">
               <span className="text-steel-400">Token balance</span>
               <span className="font-mono text-white">
-                {CONTRACTS_CONFIGURED
+                {TOKEN_LIVE
                   ? `${displayBalance(osrBalance, 3)} ${osrSymbol}`
-                  : 'Not deployed'}
+                  : 'Not live yet'}
               </span>
             </div>
           </div>

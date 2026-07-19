@@ -8,7 +8,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useEvmWallet, isWrongChain, shortAddress } from '@/lib/evm';
 import { useWalletStore } from '@/lib/store';
 import { useOperation } from '@/lib/useOperation';
-import { CHAIN, CONTRACTS_CONFIGURED } from '@/lib/config';
+import { CHAIN, TOKEN_LIVE } from '@/lib/config';
 import { PRIVY_CONFIGURED } from '@/lib/config';
 import PrivyWalletButton from './PrivyWalletButton';
 
@@ -98,7 +98,7 @@ function InjectedWalletButton() {
               <div className="mt-1.5 flex items-center justify-between text-xs">
                 <span className="text-steel-400">Token balance</span>
                 <span className="font-mono text-white">
-                  {CONTRACTS_CONFIGURED ? `${displayBalance(osrBalance, 3)} ${osrSymbol}` : 'Not deployed'}
+                  {TOKEN_LIVE ? `${displayBalance(osrBalance, 3)} ${osrSymbol}` : 'Not live yet'}
                 </span>
               </div>
             </div>

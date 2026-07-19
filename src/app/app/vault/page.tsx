@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import PageShell from '@/components/ui/PageShell';
 import { api, type ProtocolOverview } from '@/lib/api-client';
-import { CHAIN, CONTRACTS_CONFIGURED } from '@/lib/config';
+import { CHAIN, TOKEN_LIVE } from '@/lib/config';
 
 interface ReserveRow {
   walletLabel: string;
@@ -105,9 +105,9 @@ export default function VaultPage() {
             <h2 className="stat-label mb-3">Treasury Wallets</h2>
             {reserves.length === 0 ? (
               <p className="panel p-4 text-sm leading-relaxed text-steel-400">
-                {CONTRACTS_CONFIGURED
-                  ? 'No balances were returned by the configured reserve contracts.'
-                  : 'No OSR reserve contracts are configured yet. Placeholder wallet addresses and balances are intentionally hidden.'}
+                {TOKEN_LIVE
+                  ? 'The treasury wallet returned no balances.'
+                  : 'The OSR token is not live yet, so there are no on-chain balances to report.'}
               </p>
             ) : (
               <>

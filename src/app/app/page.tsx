@@ -17,7 +17,7 @@ import { COMPONENT_RARITIES, NODE_SLOTS, SLOT_LABELS, type Rarity } from '@/lib/
 import { RARITY_MULT, getCrateCost, WELCOME_BOOST_WINDOW_S } from '@/lib/economy';
 import { SHOWROOM_NODES, type LightingPreset } from '@/components/three/Compound';
 import type { RigNodeData } from '@/components/three/NodeRig';
-import { CHAIN, ONCHAIN_ENABLED } from '@/lib/config';
+import { CHAIN, TOKEN_LIVE } from '@/lib/config';
 
 /** Operator-facing wording for each stage of an on-chain settlement. */
 const SETTLEMENT_STEP_LABEL: Record<SettlementStep, string> = {
@@ -204,7 +204,7 @@ export default function CommandPage() {
       {/* Sidebar */}
       <aside className="flex w-full flex-col gap-[14px] md:max-h-[calc(100vh_-_176px)] md:overflow-y-auto md:pr-1">
 
-        {!ONCHAIN_ENABLED && (
+        {!TOKEN_LIVE && (
           <div className="rounded border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs leading-relaxed text-amber-200">
             Pre-token phase on {CHAIN.name}. Your compound is fully playable and OSR balances are
             tracked by the protocol; they settle on-chain once the OSR token goes live.

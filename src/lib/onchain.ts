@@ -1,12 +1,5 @@
 import { createPublicClient, erc20Abi, formatEther, formatUnits, getAddress, http } from 'viem';
-import {
-  CHAIN,
-  OSR_GAME_ADDRESS,
-  OSR_TOKEN_ADDRESS,
-  OSR_TREASURY_ADDRESS,
-  OSR_VAULT_ADDRESS,
-  isConfiguredAddress,
-} from './config';
+import { CHAIN, OSR_TOKEN_ADDRESS, OSR_TREASURY_ADDRESS, isConfiguredAddress } from './config';
 
 const client = createPublicClient({
   transport: http(CHAIN.rpcUrl),
@@ -33,23 +26,29 @@ export async function onchainTotalSupply(): Promise<number | null> {
   }
 }
 
+/**
+ * Live balances of the wallets that back the protocol.
+ *
+ * The emission reserve and every spend sit in one treasury wallet — there are
+ * no game or vault contracts — so this is a single holder, reported in both OSR
+ * and ETH. The ETH figure matters as much as the OSR one: payouts are signed
+ * from this wallet, so if it runs dry on gas, claims stop working.
+ */
 export async function onchainReserves() {
   if (!isConfiguredAddress(OSR_TOKEN_ADDRESS)) return [];
 
   const token = getAddress(OSR_TOKEN_ADDRESS);
-  const holders = [
-    ['Game Contract', OSR_GAME_ADDRESS],
-    ['Vault Contract', OSR_VAULT_ADDRESS],
-    ['Treasury', OSR_TREASURY_ADDRESS],
-  ] as const;
+  const holders = [['Treasury', OSR_TREASURY_ADDRESS]] as const;
   const configured = holders.filter((entry) => isConfiguredAddress(entry[1]));
   const [decimals, symbol, tokenBalances, ethBalances] = await Promise.all([
     client.readContract({ address: token, abi: erc20Abi, functionName: 'decimals' }),
     client.readContract({ address: token, abi: erc20Abi, functionName: 'symbol' }),
+    // balanceOf is a call on the TOKEN, asking about the holder — not a call on
+    // the holder address, which is an ordinary wallet with no code to run.
     Promise.all(
       configured.map(([, address]) =>
         client.readContract({
-          address: getAddress(address),
+          address: token,
           abi: erc20Abi,
           functionName: 'balanceOf',
           args: [getAddress(address)],
