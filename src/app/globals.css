@@ -117,6 +117,23 @@ textarea:focus-visible {
 @keyframes sweep { 0% { transform: translateX(-120%) skewX(-18deg); } 100% { transform: translateX(320%) skewX(-18deg); } }
 @keyframes title-glow { 0%, 100% { text-shadow: 0 0 24px rgba(245,166,35,.25); } 50% { text-shadow: 0 0 40px rgba(245,166,35,.5); } }
 @keyframes blink { 0%, 100% { opacity: .35; } 50% { opacity: 1; } }
+@keyframes crate-panel-in {
+  from { opacity: 0; transform: translateY(-10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+@keyframes crate-progress-sheen {
+  0% { transform: translateX(-140%) skewX(-20deg); }
+  100% { transform: translateX(340%) skewX(-20deg); }
+}
+@keyframes crate-reward-in {
+  0% { opacity: 0; transform: translateY(22px) scale(.96); }
+  68% { transform: translateY(-3px) scale(1.01); }
+  100% { opacity: 1; transform: translateY(0) scale(1); }
+}
+@keyframes crate-reward-band {
+  0%, 100% { opacity: .35; transform: scaleX(.76); }
+  50% { opacity: 1; transform: scaleX(1); }
+}
 @keyframes drift {
   0% { transform: translate(0, 0); opacity: 0; }
   12% { opacity: .7; }
@@ -128,6 +145,59 @@ textarea:focus-visible {
 .landing-title { animation: title-glow 5s ease-in-out infinite; }
 .landing-float { animation: floaty 5.2s ease-in-out infinite; }
 .landing-blink { animation: blink 2s ease-in-out infinite; }
+
+.crate-status-panel {
+  position: relative;
+  overflow: hidden;
+  border: 1px solid color-mix(in srgb, var(--crate-accent) 42%, transparent);
+  border-radius: 12px;
+  padding: 11px 13px;
+  background: linear-gradient(135deg, color-mix(in srgb, var(--crate-accent) 12%, #10141d 88%), rgba(4,6,10,.92));
+  box-shadow: 0 16px 44px -24px #000, 0 1px 0 rgba(255,255,255,.08) inset;
+  backdrop-filter: blur(16px);
+  animation: crate-panel-in .42s cubic-bezier(.22,.8,.2,1) both;
+}
+
+.crate-progress { position: relative; transition: width .12s linear; }
+.crate-progress::after {
+  content: '';
+  position: absolute;
+  inset: -4px auto -4px 0;
+  width: 36%;
+  background: linear-gradient(90deg, transparent, rgba(255,255,255,.82), transparent);
+  animation: crate-progress-sheen 1.15s linear infinite;
+}
+
+.crate-skip {
+  border: 1px solid rgba(255,255,255,.14);
+  border-radius: 10px;
+  padding: 8px 10px;
+  background: rgba(5,7,11,.76);
+  color: rgba(255,255,255,.7);
+  font-family: var(--font-mono), ui-monospace, monospace;
+  font-size: 10px;
+  letter-spacing: .13em;
+  text-transform: uppercase;
+  transition: color .16s ease, border-color .16s ease, background .16s ease;
+}
+.crate-skip span { margin-left: 6px; color: rgba(255,255,255,.35); }
+.crate-skip:hover { border-color: rgba(255,255,255,.38); background: rgba(16,20,28,.92); color: #fff; }
+
+.crate-guarantee {
+  border: 1px solid;
+  border-radius: 999px;
+  padding: 7px 12px;
+  background: rgba(5,7,11,.76);
+  box-shadow: 0 10px 30px -16px #000;
+  font-family: var(--font-mono), ui-monospace, monospace;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: .15em;
+  text-transform: uppercase;
+}
+
+.crate-reward-card { animation: crate-reward-in .55s cubic-bezier(.16,.9,.28,1) both; }
+.crate-reward-band { height: 2px; transform-origin: center; animation: crate-reward-band 1.8s ease-in-out infinite; }
 
 /* Landing hero CTA: larger radius and a deeper amber bloom than the in-app
    .btn-primary, matching the prototype's start-screen button. */

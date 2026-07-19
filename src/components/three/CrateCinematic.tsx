@@ -5,7 +5,7 @@
 // shorter track for low tiers), using the Blender-exported v2 crate for the
 // rolled rarity. The v2 scene is rotated from Z-up into Three.js Y-up.
 
-import { Suspense, useEffect, useMemo, useRef, useState } from 'react';
+import { Suspense, useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 import * as THREE from 'three';
 import { Canvas, useFrame, useThree } from '@react-three/fiber';
 import { Sparkles, useGLTF } from '@react-three/drei';
@@ -19,21 +19,31 @@ import type { CrateResult } from '@/lib/api-client';
 type Phase = 'intro' | 'rumble' | 'peak' | 'freeze' | 'detonate' | 'decel' | 'reveal';
 
 const HIGH_TRACK: Array<[Phase, number]> = [
-  ['intro', 450],
-  ['rumble', 1200],
-  ['peak', 400],
-  ['freeze', 300],
-  ['detonate', 400],
-  ['decel', 2700],
-  ['reveal', 2000],
+  ['intro', 520],
+  ['rumble', 1180],
+  ['peak', 360],
+  ['freeze', 220],
+  ['detonate', 360],
+  ['decel', 1700],
+  ['reveal', 1900],
 ];
 const LOW_TRACK: Array<[Phase, number]> = [
-  ['intro', 450],
-  ['rumble', 900],
-  ['detonate', 350],
-  ['decel', 1400],
+  ['intro', 420],
+  ['rumble', 760],
+  ['detonate', 300],
+  ['decel', 900],
   ['reveal', 1500],
 ];
+
+const PHASE_LABEL: Record<Phase, string> = {
+  intro: 'Acquiring crate signal',
+  rumble: 'Reading rarity signature',
+  peak: 'Pressure threshold reached',
+  freeze: 'Seal lock engaged',
+  detonate: 'Unsealing payload',
+  decel: 'Stabilising component',
+  reveal: 'Component secured',
+};
 
 // Tiny WebAudio SFX so the cinematic has weight without shipping audio files.
 function playTone(freq: number, dur: number, type: OscillatorType = 'sine', gain = 0.08, sweepTo?: number) {
@@ -140,14 +150,31 @@ function CrateModel({ rarity, phase, phaseT }: { rarity: Rarity; phase: Phase; p
       material.emissiveIntensity = pulse;
     });
 
-    // Shake during rumble/peak; explode on detonate; drift during decel/reveal.
+    // The crate starts suspended, tightens into a pressure shake, then eases
+    // back through the reveal. Keeping the motion on the authored asset gives
+    // every rarity the same readable silhouette.
     if (group.current) {
+      const introLift = phase === 'intro' ? 0.32 * (1 - easeOutCubic(phaseT)) : 0;
+      const revealFloat = phase === 'decel' || phase === 'reveal' ? 0.08 * Math.sin(t * 1.8) : 0;
+      let x = 0;
+      let y = introLift + revealFloat;
+      let z = 0;
+      let scale = phase === 'intro' ? 0.92 + 0.08 * easeOutCubic(phaseT) : 1;
       if (phase === 'rumble' || phase === 'peak') {
-        const amp = phase === 'peak' ? 0.05 : 0.02 + 0.02 * phaseT;
-        group.current.position.set(amp * Math.sin(t * 61), amp * Math.sin(t * 53), amp * Math.sin(t * 47));
-      } else {
-        group.current.position.set(0, 0, 0);
+        const amp = phase === 'peak' ? 0.052 : 0.012 + 0.025 * phaseT;
+        x = amp * Math.sin(t * 61);
+        y += amp * Math.sin(t * 53);
+        z = amp * Math.sin(t * 47);
+        scale = 1 + 0.035 * Math.sin(t * 16) * (phase === 'peak' ? 1 : phaseT);
       }
+      group.current.position.set(x, y, z);
+      group.current.rotation.y =
+        phase === 'detonate'
+          ? 0.08 * Math.sin(t * 32) * (1 - phaseT)
+          : phase === 'decel' || phase === 'reveal'
+            ? 0.11 * Math.sin(t * 0.9)
+            : 0.05 * Math.sin(t * 0.6);
+      group.current.scale.setScalar(scale);
     }
 
     const explode =
@@ -155,7 +182,7 @@ function CrateModel({ rarity, phase, phaseT }: { rarity: Rarity; phase: Phase; p
       : phase === 'decel' || phase === 'reveal' ? 1 + 0.15 * phaseT
       : 0;
     parts.lids.forEach((lid) => {
-      const d = explode * 1.4;
+      const d = explode * 1.55;
       lid.object.position.set(
         lid.home.x + lid.direction.x * d,
         lid.home.y + lid.direction.y * d,
@@ -209,6 +236,34 @@ function CinematicCamera({ phase, phaseT }: { phase: Phase; phaseT: number }) {
   return null;
 }
 
+function CrateStage({ color, phase, phaseT, tier }: { color: string; phase: Phase; phaseT: number; tier: number }) {
+  const rings = useRef<THREE.Group>(null);
+
+  useFrame(({ clock }) => {
+    if (!rings.current) return;
+    const charge = phase === 'rumble' || phase === 'peak' || phase === 'freeze';
+    const opened = phase === 'detonate' || phase === 'decel' || phase === 'reveal';
+    rings.current.rotation.z = clock.elapsedTime * (charge ? 1.5 : 0.35);
+    const scale = opened ? 1.05 + 0.42 * Math.min(1, phaseT) : charge ? 0.96 + 0.06 * Math.sin(clock.elapsedTime * 10) : 1;
+    rings.current.scale.setScalar(scale);
+  });
+
+  const intensity = phase === 'detonate' ? 3.5 + tier * 0.55 : phase === 'decel' || phase === 'reveal' ? 1.5 + tier * 0.2 : 0.25 + tier * 0.12;
+  return (
+    <group ref={rings} position={[0, 0.15, -0.15]}>
+      <mesh rotation={[-Math.PI / 2, 0, 0]}>
+        <torusGeometry args={[2.55, 0.018, 8, 96]} />
+        <meshBasicMaterial color={color} transparent opacity={0.18 + tier * 0.035} toneMapped={false} />
+      </mesh>
+      <mesh rotation={[-Math.PI / 2, 0, Math.PI / 4]}>
+        <torusGeometry args={[3.35, 0.012, 8, 96]} />
+        <meshBasicMaterial color={color} transparent opacity={0.1 + tier * 0.02} toneMapped={false} />
+      </mesh>
+      <pointLight position={[0, 1.1, 1.8]} color={color} intensity={intensity} distance={12} decay={2} />
+    </group>
+  );
+}
+
 const TICKER = ['common', 'uncommon', 'rare', 'epic', 'legendary', 'mythic', 'divine'] as const;
 
 export default function CrateCinematic({
@@ -226,10 +281,41 @@ export default function CrateCinematic({
 
   const [phaseIdx, setPhaseIdx] = useState(0);
   const [phaseT, setPhaseT] = useState(0);
+  const [reduceMotion, setReduceMotion] = useState(false);
   const [phase, dur] = track[Math.min(phaseIdx, track.length - 1)];
   const done = phaseIdx >= track.length - 1 && phaseT >= 1;
+  const showCard = phase === 'reveal' || done;
+  const progressMs = track.slice(0, phaseIdx).reduce((total, [, duration]) => total + duration, 0) + phaseT * dur;
+  const totalMs = track.reduce((total, [, duration]) => total + duration, 0);
+  const progress = Math.min(1, progressMs / totalMs);
+  const skipToReveal = useCallback(() => {
+    setPhaseIdx(track.length - 1);
+    setPhaseT(1);
+  }, [track.length]);
 
   useEffect(() => {
+    const media = window.matchMedia('(prefers-reduced-motion: reduce)');
+    const sync = () => setReduceMotion(media.matches);
+    sync();
+    media.addEventListener('change', sync);
+    return () => media.removeEventListener('change', sync);
+  }, []);
+
+  useEffect(() => {
+    if (reduceMotion) skipToReveal();
+  }, [reduceMotion, skipToReveal]);
+
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape' && !showCard) skipToReveal();
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [showCard, skipToReveal]);
+
+  useEffect(() => {
+    if (reduceMotion) return;
+    if (phaseIdx >= track.length - 1 && phaseT >= 1) return;
     let raf: number;
     const started = performance.now();
     const tick = () => {
@@ -243,7 +329,7 @@ export default function CrateCinematic({
     };
     raf = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(raf);
-  }, [phaseIdx, dur, track.length]);
+  }, [phaseIdx, dur, reduceMotion, track.length]);
 
   // SFX cues per phase entry.
   useEffect(() => {
@@ -266,23 +352,36 @@ export default function CrateCinematic({
 
   const color = RARITY_COLOR[rarity];
   const label = COMPONENT_RARITIES[rarity].label;
-  const showCard = phase === 'reveal' || done;
-
   return (
-    <div className="fixed inset-0 z-[70] bg-black/90 backdrop-blur-sm">
+    <div
+      className="crate-cinematic fixed inset-0 z-[70] isolate overflow-hidden bg-[#030405]"
+      role="dialog"
+      aria-modal="true"
+      aria-label="Supply crate opening"
+    >
+      <div
+        className="pointer-events-none absolute inset-0 opacity-80"
+        style={{ background: `radial-gradient(circle at 50% 48%, ${color}2c 0%, transparent 27%), radial-gradient(circle at 50% 110%, ${color}15 0%, transparent 52%), linear-gradient(180deg, #090b10 0%, #030405 80%)` }}
+      />
       <Canvas
         dpr={[1, 1.75]}
         camera={{ position: [0, 2.4, 9.5], fov: 50 }}
         gl={{ toneMapping: THREE.ACESFilmicToneMapping }}
       >
         <color attach="background" args={['#05060a']} />
-        <ambientLight intensity={0.35} />
-        <directionalLight position={[4, 8, 6]} intensity={1.6} color="#ffd9a0" />
-        <pointLight position={[0, 2.5, 0]} color={color} intensity={phase === 'detonate' || showCard ? 14 : 3} distance={16} decay={2} />
+        <fog attach="fog" args={['#05060a', 9, 22]} />
+        <ambientLight intensity={0.22} />
+        <directionalLight position={[4, 8, 6]} intensity={1.9} color="#ffd9a0" />
+        <pointLight position={[-4, 2, 2]} color="#5fa4ff" intensity={1.1} distance={15} decay={2} />
+        <pointLight position={[0, 2.5, 0]} color={color} intensity={phase === 'detonate' || showCard ? 17 : 3.5} distance={16} decay={2} />
         <Suspense fallback={null}>
           <CrateModel rarity={rarity} phase={phase} phaseT={phaseT} />
+          <CrateStage color={color} phase={phase} phaseT={phaseT} tier={tier} />
+          {(phase === 'rumble' || phase === 'peak') && (
+            <Sparkles count={tier >= 4 ? 42 : 22} scale={[3.2, 2.1, 3.2]} size={1.35} speed={0.34} color={color} position={[0, 1.1, 0]} />
+          )}
           {(phase === 'detonate' || phase === 'decel' || showCard) && (
-            <Sparkles count={tier >= 4 ? 160 : 60} scale={[6, 4, 6]} size={3} speed={1.2} color={color} position={[0, 1.5, 0]} />
+            <Sparkles count={tier >= 4 ? 210 : 92} scale={[6.5, 4.5, 6.5]} size={3.2} speed={1.35} color={color} position={[0, 1.5, 0]} />
           )}
         </Suspense>
         <CinematicCamera phase={phase} phaseT={phaseT} />
@@ -297,61 +396,94 @@ export default function CrateCinematic({
         </EffectComposer>
       </Canvas>
 
-      {/* HUD overlays */}
-      <div className="pointer-events-none absolute inset-x-0 top-10 flex flex-col items-center gap-2">
-        {result.pityTriggered && (
-          <div className="rounded border border-amber-500 bg-ink-900/80 px-3 py-1 font-mono text-xs uppercase tracking-widest text-amber-400">
-            {result.pityTriggered === 'divine'
-              ? 'Divine Guaranteed'
-              : result.pityTriggered === 'mythic'
-                ? 'Mythic+ Guaranteed'
-                : 'Legendary+ Guaranteed'}
+      <div className="pointer-events-none absolute inset-x-0 top-0 z-10 mx-auto flex max-w-5xl items-start justify-between px-4 pt-5 sm:px-8 sm:pt-8">
+        <div className="crate-status-panel w-[min(22rem,calc(100vw-7rem))]" style={{ '--crate-accent': color } as CSSProperties}>
+          <div className="flex items-center justify-between gap-4 font-mono text-[9px] uppercase tracking-[0.22em] text-steel-400">
+            <span>Supply crate // live unseal</span>
+            <span style={{ color }}>{Math.round(progress * 100)}%</span>
           </div>
-        )}
+          <div className="mt-2 h-1 overflow-hidden rounded-full bg-white/10">
+            <div className="crate-progress h-full rounded-full" style={{ width: `${Math.max(3, progress * 100)}%`, backgroundColor: color }} />
+          </div>
+          <div className="mt-2 flex items-center justify-between gap-3">
+            <span className="font-mono text-[11px] uppercase tracking-[0.14em] text-white/85">{PHASE_LABEL[phase]}</span>
+            {!showCard && (
+              <span className="font-mono text-[9px] uppercase tracking-[0.14em]" style={{ color: RARITY_COLOR[tickerRarity as Rarity] }}>
+                {COMPONENT_RARITIES[tickerRarity as Rarity].label} signal
+              </span>
+            )}
+          </div>
+        </div>
         {!showCard && (
-          <div
-            className="font-mono text-2xl font-bold uppercase tracking-[0.3em] transition-colors"
-            style={{ color: RARITY_COLOR[tickerRarity as Rarity] }}
-          >
-            {COMPONENT_RARITIES[tickerRarity as Rarity].label}
-          </div>
+          <button className="crate-skip pointer-events-auto" type="button" onClick={skipToReveal}>
+            Skip <span aria-hidden="true">Esc</span>
+          </button>
         )}
       </div>
 
-      {showCard && (
-        <div className="absolute inset-x-0 bottom-10 flex flex-col items-center gap-3">
-          <div
-            className="panel w-80 border-2 p-5 text-center"
-            style={{ borderColor: color, boxShadow: `0 0 40px ${color}55` }}
-          >
-            <div className="font-mono text-xs uppercase tracking-[0.3em]" style={{ color }}>
-              {label}
-            </div>
-            <div className="mt-1 text-xl font-bold text-white">
-              {SLOT_LABELS[result.slot] ?? result.slot}
-            </div>
-            <div className="mt-1 text-sm text-steel-300">
-              {RARITY_MULT[rarity].toLocaleString()}× multiplier
-            </div>
-            {result.isUpgrade && result.previousRarity && (
-              <div className="mt-2 text-xs text-emerald-400">
-                Upgrade vs current {COMPONENT_RARITIES[result.previousRarity as Rarity]?.label ?? result.previousRarity}
-              </div>
-            )}
-            <div className="mt-2 text-xs text-steel-400">✓ Added to Inventory · equip from the Inventory page</div>
+      {result.pityTriggered && (
+        <div className="pointer-events-none absolute inset-x-0 top-[8.5rem] z-10 flex justify-center px-4">
+          <div className="crate-guarantee" style={{ borderColor: color, color }}>
+            {result.pityTriggered === 'divine'
+              ? 'Divine guarantee triggered'
+              : result.pityTriggered === 'mythic'
+                ? 'Mythic+ guarantee triggered'
+                : 'Legendary+ guarantee triggered'}
           </div>
-          <div className="flex gap-3">
+        </div>
+      )}
+
+      {showCard && (
+        <div className="absolute inset-x-0 bottom-0 z-10 flex flex-col items-center px-4 pb-6 sm:pb-10">
+          <div
+            className="crate-reward-card panel w-full max-w-[25rem] overflow-hidden border-2 p-0 text-center"
+            style={{ borderColor: color, boxShadow: `0 0 0 1px ${color}40 inset, 0 20px 80px -28px ${color}dd` }}
+            role="status"
+            aria-live="assertive"
+          >
+            <div className="crate-reward-band" style={{ background: `linear-gradient(90deg, transparent, ${color}, transparent)` }} />
+            <div className="p-5 sm:p-6">
+              <div className="font-mono text-[10px] uppercase tracking-[0.3em] text-steel-400">Component acquired</div>
+              <div className="mt-2 font-mono text-sm font-bold uppercase tracking-[0.38em]" style={{ color }}>
+                {label}
+              </div>
+              <div className="mt-2 text-2xl font-bold tracking-tight text-white sm:text-3xl">
+                {SLOT_LABELS[result.slot] ?? result.slot}
+              </div>
+              <div className="mt-5 grid grid-cols-3 divide-x divide-white/10 rounded-xl border border-white/10 bg-black/20 py-3">
+                <div>
+                  <div className="font-mono text-[9px] uppercase tracking-[0.14em] text-steel-500">Rarity</div>
+                  <div className="mt-1 text-xs font-semibold" style={{ color }}>{label}</div>
+                </div>
+                <div>
+                  <div className="font-mono text-[9px] uppercase tracking-[0.14em] text-steel-500">Power</div>
+                  <div className="mt-1 text-xs font-semibold text-white">{RARITY_MULT[rarity].toLocaleString()}x</div>
+                </div>
+                <div>
+                  <div className="font-mono text-[9px] uppercase tracking-[0.14em] text-steel-500">Storage</div>
+                  <div className="mt-1 text-xs font-semibold text-emerald-300">Inventory</div>
+                </div>
+              </div>
+              {result.isUpgrade && result.previousRarity && (
+                <div className="mt-3 rounded-lg border border-emerald-400/25 bg-emerald-400/10 px-3 py-2 text-xs text-emerald-200">
+                  Upgrade over {COMPONENT_RARITIES[result.previousRarity as Rarity]?.label ?? result.previousRarity}
+                </div>
+              )}
+            </div>
+          </div>
+          <div className="mt-4 flex flex-wrap justify-center gap-3">
             {onOpenAnother && (
-              <button className="btn-primary" onClick={onOpenAnother}>
-                Open Another Crate
+              <button className="btn-primary" type="button" onClick={onOpenAnother}>
+                Open another crate
               </button>
             )}
-            <button className="btn-secondary" onClick={onClose}>
-              Close
+            <button className="btn-secondary" type="button" onClick={onClose}>
+              Back to command
             </button>
           </div>
         </div>
       )}
+
     </div>
   );
 }
