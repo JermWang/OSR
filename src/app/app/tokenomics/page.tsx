@@ -20,6 +20,9 @@ import {
   RESERVE_PCT_LABEL,
   FLOAT_PCT_LABEL,
   GENESIS_RATE_PER_SEC,
+  EMISSION_TAIL_DAY,
+  HALVING_PERIOD_DAYS,
+  HALVING_PERIOD_LABEL,
   HALVING_SCHEDULE_TEXT,
   getCrateCost,
   getShaftBonusSlots,
@@ -54,7 +57,7 @@ const REWARD_FLOW = `Launch: ${SUPPLY_LABEL} OSR minted by Flap to the bonding c
   │${'   OSR Emission Reserve'.padEnd(FLOW_BOX)}│◀┘
   │${`   ${EMISSION_RESERVE_LABEL} OSR`.padEnd(FLOW_BOX)}│◀── reserve split on in-game
   └──────────────┬──────────────┘     spends tops the pool back up
-                 │  halving curve E(t) = ${GENESIS_RATE_PER_SEC.toFixed(1)} × 0.5^(t/7d)
+                 │  halving curve E(t) = ${GENESIS_RATE_PER_SEC.toFixed(1)} × 0.5^(t/${HALVING_PERIOD_DAYS}d)
                  ▼
     Each user's per-second rate:
     share = min(userGP / totalGP, 30%) × welcomeBoost(elapsed)
@@ -68,10 +71,10 @@ const REWARD_FLOW = `Launch: ${SUPPLY_LABEL} OSR minted by Flap to the bonding c
   Separately: Protocol ETH revenue (ERC-20 tax 2% + LP 2%) → treasury ops
   (XOMX/CVXX swap path is a legacy ops-side flow, not a user-rewards path)`;
 
-const HALVING_TABLE = `E(t) = E₀ × 0.5 ^ (t / 7 days)
+const HALVING_TABLE = `E(t) = E₀ × 0.5 ^ (t / ${HALVING_PERIOD_LABEL})
 
 ${HALVING_SCHEDULE_TEXT}
-Day 90 : ~0            (emission effectively extinct)`;
+Day ${EMISSION_TAIL_DAY} : ~0            (99% emitted — tail is negligible)`;
 
 const USER_RATE = `user_rate = min(user_gp / total_network_gp, 30%) × E(t) × welcome_boost
 
@@ -130,7 +133,7 @@ export default function TokenomicsPage() {
             </li>
             <li>
               A halving emission curve (E₀ = {GENESIS_RATE_PER_SEC.toFixed(1)} OSR/sec, halves
-              every 7 days) distributes OSR from the{' '}
+              every {HALVING_PERIOD_LABEL}) distributes OSR from the{' '}
               <strong className="text-white">{EMISSION_RESERVE_LABEL} reserve</strong>. The rate is
               derived from the reserve rather than fixed, so the schedule spends it exactly and can
               never promise OSR the protocol does not hold. Each user earns a share proportional to
@@ -249,7 +252,8 @@ export default function TokenomicsPage() {
             <code className="rounded bg-ink-700 px-1 font-mono text-xs text-amber-500">
               E₀ = {GENESIS_RATE_PER_SEC.toFixed(1)} OSR/sec
             </code>{' '}
-            at genesis, the rate halves every <strong className="text-white">7 days</strong> until
+            at genesis, the rate halves every{' '}
+            <strong className="text-white">{HALVING_PERIOD_LABEL}</strong> until
             the reserve is fully paid out.
           </p>
           <div className="panel mt-3 overflow-x-auto p-4">

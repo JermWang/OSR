@@ -64,7 +64,13 @@ export default function PrivyWalletButton() {
         );
         if (cancelled || !address) return;
         setStoreWallet(address);
-        setOperationWallet(address);
+        // Only start polling the game API once the identity token exists.
+        // Privy issues it asynchronously, and every authenticated route
+        // requires it — wiring the wallet up first makes the opening request
+        // race the token and 401, which surfaces as a sign-in error banner
+        // that clears itself on the next poll. This effect re-runs when the
+        // token arrives, and setOperationWallet no-ops on an unchanged wallet.
+        if (identityToken) setOperationWallet(address);
       } catch (error) {
         if (!cancelled) {
           setSyncError(error instanceof Error ? error.message : 'Privy wallet initialization failed');
@@ -79,6 +85,7 @@ export default function PrivyWalletButton() {
     walletsReady,
     authenticated,
     managedWallet,
+    identityToken,
     attachProvider,
     setStoreWallet,
     setOperationWallet,

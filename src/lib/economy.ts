@@ -158,7 +158,20 @@ export const TOTAL_SUPPLY = Number(
   process.env.NEXT_PUBLIC_OSR_TOTAL_SUPPLY ?? 1_000_000_000
 );
 
-export const HALVING_PERIOD_MS = 7 * 24 * 3600 * 1000; // halves weekly
+/**
+ * How often emission halves — the lever that sets how long the game lives.
+ *
+ * Note this is independent of EMISSION_RESERVE_PCT. Because the genesis rate is
+ * derived as reserve/(period*2), changing the reserve percentage scales how much
+ * players earn but leaves the curve's shape untouched: a 5% reserve and a 10%
+ * reserve are both half-spent after one period and ~94% spent after four. Only
+ * this constant changes the timeline.
+ *
+ * At the original 7 days the reserve was 94% gone inside a month. Fortnightly
+ * keeps a hot launch (3.6% of the reserve on day one) while stretching
+ * meaningful emission across a quarter rather than a few weeks.
+ */
+export const HALVING_PERIOD_MS = 14 * 24 * 3600 * 1000; // halves fortnightly
 export const SHARE_CAP = 0.3; // no user captures more than 30% of emission
 
 /**
@@ -220,17 +233,33 @@ export const FLOAT_PCT_LABEL = `${Math.round((1 - EMISSION_RESERVE_PCT) * 100)}%
  * percentage changes, and a hardcoded table silently goes stale the moment it
  * does (exactly how the old 229M supply figures drifted).
  */
-export const HALVING_SCHEDULE_TEXT = [0, 7, 14, 30]
-  .map((day) => {
-    const rate = GENESIS_RATE_PER_SEC / Math.pow(2, day / 7);
-    const emittedPct = Math.round((1 - Math.pow(0.5, day / 7)) * 100);
-    const tail = day === 0 ? '' : `, ${emittedPct}% of lifetime emitted`;
-    return `Day ${String(day).padStart(2)} : ${rate.toFixed(1).padStart(6)} OSR/sec  (${compactOsr(rate * 86400)}/day${tail})`;
+/** Halving period in days, and a label for prose ("14 days"). */
+export const HALVING_PERIOD_DAYS = HALVING_PERIOD_MS / 86_400_000;
+export const HALVING_PERIOD_LABEL = `${HALVING_PERIOD_DAYS} days`;
+
+// Sampled at whole halvings so the table stays meaningful whatever the period
+// is. The previous version divided by a hardcoded 7, which would have gone
+// stale the moment HALVING_PERIOD_MS changed — the same failure as the old
+// 229M supply figures.
+export const HALVING_SCHEDULE_TEXT = [0, 1, 2, 3]
+  .map((cycle) => {
+    const day = Math.round(cycle * HALVING_PERIOD_DAYS);
+    const rate = GENESIS_RATE_PER_SEC / Math.pow(2, cycle);
+    const emittedPct = Math.round((1 - Math.pow(0.5, cycle)) * 100);
+    const tail = cycle === 0 ? '' : `, ${emittedPct}% of lifetime emitted`;
+    return `Day ${String(day).padStart(3)} : ${rate.toFixed(1).padStart(6)} OSR/sec  (${compactOsr(rate * 86400)}/day${tail})`;
   })
   .join('\n');
 
 /** First-day emission, for the docs' summary line. */
 export const DAY_ONE_EMISSION_LABEL = compactOsr(GENESIS_RATE_PER_SEC * 86400);
+
+/**
+ * Day by which 99% of the reserve has been emitted — the point where the tail
+ * stops being worth playing for. Derived, because the docs quote it and a
+ * hardcoded "day ~60" silently became wrong the moment the period changed.
+ */
+export const EMISSION_TAIL_DAY = Math.round(HALVING_PERIOD_DAYS * Math.log2(100));
 
 export function emissionRateAt(genesisMs: number, nowMs: number): number {
   const cycle = Math.max(0, Math.floor((nowMs - genesisMs) / HALVING_PERIOD_MS));

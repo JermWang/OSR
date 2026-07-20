@@ -14,6 +14,9 @@ import {
   FLOAT_PCT_LABEL,
   GENESIS_RATE_PER_SEC,
   DAY_ONE_EMISSION_LABEL,
+  EMISSION_TAIL_DAY,
+  HALVING_PERIOD_DAYS,
+  HALVING_PERIOD_LABEL,
 } from '@/lib/economy';
 import { AURA_TIERS } from '@/lib/aura';
 import {
@@ -48,12 +51,18 @@ const CONTENTS: Array<{ href: string; label: string }> = [
 
 const rarityLabel = (r: Rarity) => r.charAt(0).toUpperCase() + r.slice(1);
 
-const EMISSION_CURVE = `E(t) = ${GENESIS_RATE_PER_SEC.toFixed(1)} OSR/sec × 0.5 ^ (t / 7d)
+// Milestones are computed from the halving period rather than written out, so
+// retuning the schedule cannot leave the guide quoting the old curve.
+const emittedByDay = (day: number) => 1 - Math.pow(0.5, day / HALVING_PERIOD_DAYS);
+const EMISSION_CURVE = `E(t) = ${GENESIS_RATE_PER_SEC.toFixed(1)} OSR/sec × 0.5 ^ (t / ${HALVING_PERIOD_DAYS}d)
 
-Day 0  : ${DAY_ONE_EMISSION_LABEL} OSR emitted
-Day 7  : 50% of lifetime already emitted
-Day 14 : 75% emitted
-Day 30 : 95% emitted
+Day ${String(0).padStart(3)}  : ${DAY_ONE_EMISSION_LABEL} OSR emitted
+${[1, 2, 4].
+  map((c) => {
+    const day = Math.round(c * HALVING_PERIOD_DAYS);
+    return `Day ${String(day).padStart(3)}  : ${Math.round(emittedByDay(day) * 100)}% of lifetime emitted`;
+  })
+  .join('\n')}
 Lifetime total: ${LIFETIME_EMISSION_LABEL} OSR — the whole Emission Reserve,
 ${RESERVE_PCT_LABEL} of the ${SUPPLY_LABEL} fixed supply`;
 
@@ -81,7 +90,8 @@ const FAQ: Array<{ q: string; a: React.ReactNode }> = [
     a: (
       <p>
         Nodes don&rsquo;t disappear. What can happen: if the protocol is paused by admin, or if the
-        halving curve has fully decayed (past day ~60), accrual rates become very small or zero. The
+        halving curve has fully decayed (past day ~{EMISSION_TAIL_DAY}), accrual rates become very
+        small or zero. The
         nodes themselves stay in your wallet permanently — they just stop earning meaningful yield
         as the halving tail approaches zero.
       </p>
@@ -604,7 +614,8 @@ export default function DocsPage() {
             OSR uses a <strong className="text-white">halving emission curve</strong>. Global OSR
             issuance starts at{' '}
             <strong className="text-white">{GENESIS_RATE_PER_SEC.toFixed(1)} OSR/sec</strong> at
-            genesis and halves every <strong className="text-white">7 days</strong> until the
+            genesis and halves every <strong className="text-white">{HALVING_PERIOD_LABEL}</strong>{' '}
+            until the
             Emission Reserve is fully paid out.
           </p>
           <div className="panel overflow-x-auto p-4">

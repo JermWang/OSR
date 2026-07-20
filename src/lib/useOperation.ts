@@ -55,7 +55,24 @@ export const useOperation = create<OperationState>()((set, get) => ({
       const op = await api.operation(wallet);
       set({ op, error: null, loading: false });
     } catch (e) {
-      set({ error: e instanceof Error ? e.message : 'API unreachable', loading: false });
+      const message = e instanceof Error ? e.message : 'API unreachable';
+      // Privy rotates its tokens, so a poll can land in the gap while one is
+      // being reissued. That is a sub-second condition, but the poll only runs
+      // every 15s — surfacing it immediately would put "sign-in could not be
+      // verified" in front of a user whose sign-in is perfectly fine. Give it
+      // one quick retry and only report an auth failure that actually persists.
+      if (/\b401\b|auth|privy|token|unauthor/i.test(message)) {
+        await new Promise((resolve) => setTimeout(resolve, 1200));
+        if (get().wallet !== wallet) return;
+        try {
+          const op = await api.operation(wallet);
+          set({ op, error: null, loading: false });
+          return;
+        } catch {
+          /* fall through to reporting the original failure */
+        }
+      }
+      set({ error: message, loading: false });
     }
   },
 
