@@ -199,6 +199,14 @@ export default function DocsPage() {
             A ninety-second run through the whole loop — deploying a rig, opening a crate, equipping
             components, and claiming. Everything below is the same thing in writing.
           </p>
+          <p className="text-xs leading-relaxed text-steel-500">
+            Figures shown on screen are from an earlier build and do not reflect current supply or
+            network size — see{' '}
+            <a href="#emission" className="text-amber-500 hover:underline">
+              how emission works
+            </a>{' '}
+            for the live numbers.
+          </p>
         </section>
 
         {/* 1. What is OSR? */}
