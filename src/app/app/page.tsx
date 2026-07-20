@@ -3,7 +3,7 @@
 // Command Center — the main game screen: 3D compound + sidebar HUD.
 
 import dynamic from 'next/dynamic';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useOperation } from '@/lib/useOperation';
 import {
   api,
@@ -13,6 +13,7 @@ import {
   type StepHandler,
 } from '@/lib/api-client';
 import { useWalletStore } from '@/lib/store';
+import { playSfx } from '@/lib/sfx';
 import { useDeployStatus } from '@/lib/useDeployStatus';
 import { COMPONENT_RARITIES, NODE_SLOTS, SLOT_LABELS, rarityHex, type Rarity } from '@/lib/rarity';
 import { auraHex, auraLabel } from '@/lib/aura';
@@ -92,6 +93,16 @@ export default function CommandPage() {
   const capacityFull = oilCount >= oilCapacity && mineCount >= mineCapacity;
   const selected = nodes.find((n) => n.id === selectedNodeId) ?? null;
   const unseen = op?.unseenCrates ?? [];
+
+  // Chime once when a crate is freshly mined, so a find is noticed even when the
+  // operator is looking elsewhere on the page. Keyed on the count rising, not on
+  // it merely being non-zero, so it does not re-fire every poll.
+  const unseenCount = unseen.length;
+  const prevUnseen = useRef(0);
+  useEffect(() => {
+    if (unseenCount > prevUnseen.current) playSfx('notify');
+    prevUnseen.current = unseenCount;
+  }, [unseenCount]);
   const sceneNodes = useMemo(() => {
     const visible: RigNodeData[] = nodes.map((node) => ({
       id: node.id,
@@ -166,8 +177,12 @@ export default function CommandPage() {
         await fn((step) => say(SETTLEMENT_STEP_LABEL[step]));
         await refresh();
         if (success) say(success);
+        // A cue matched to the action: coins for a claim, a thunk for a deploy,
+        // a generic success for everything else.
+        playSfx(label === 'claim' ? 'claim' : label === 'mint' ? 'deploy' : 'success');
       } catch (e) {
         say(e instanceof Error ? e.message : `${label} failed`);
+        playSfx('error');
       } finally {
         setBusy(null);
         useDeployStatus.getState().setBusy(false);

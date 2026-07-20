@@ -5,6 +5,7 @@ import WalletButton from '@/components/ui/WalletButton';
 import DisclaimerModal from '@/components/ui/DisclaimerModal';
 import DeployNotice from '@/components/ui/DeployNotice';
 import NavBar from '@/components/ui/NavBar';
+import SoundToggle from '@/components/ui/SoundToggle';
 import { useEvmWallet } from '@/lib/evm';
 import { CHAIN, TOKEN_LIVE } from '@/lib/config';
 
@@ -42,6 +43,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
           </Link>
           <div className="ml-auto flex items-center gap-2">
             <OsrBalancePill />
+            <SoundToggle />
             <WalletButton />
           </div>
         </header>

@@ -7,6 +7,7 @@ import { Play, Wallet } from '@phosphor-icons/react';
 import { CHAIN } from '@/lib/config';
 import { SHOWROOM_NODES } from '@/components/three/Compound';
 import CopyContract from '@/components/ui/CopyContract';
+import SoundToggle from '@/components/ui/SoundToggle';
 import { RARITIES } from '@/lib/rarity';
 
 const Scene = dynamic(() => import('@/components/three/Scene'), { ssr: false });
@@ -96,8 +97,11 @@ export default function Landing() {
           <div className="gold-text font-mono text-[19px] font-bold tracking-[.3em]">OSR</div>
           <div className="mt-1 font-mono text-[8.5px] uppercase tracking-[.32em] text-amber-100/70">Oil Strategic Reserve</div>
         </div>
-        <div className="ml-auto hidden items-center gap-3 sm:flex">
-          <div className="glass-control flex items-center gap-2 rounded-full border-emerald-400/35 px-4 py-2 font-mono text-[10px] uppercase tracking-[.14em] text-emerald-300">
+        <div className="pointer-events-auto ml-auto flex items-center gap-3">
+          {/* Mounted here so the global click cue and mute control work on the
+              landing too, not only inside the app. */}
+          <SoundToggle />
+          <div className="glass-control hidden items-center gap-2 rounded-full border-emerald-400/35 px-4 py-2 font-mono text-[10px] uppercase tracking-[.14em] text-emerald-300 sm:flex">
             <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 shadow-[0_0_8px_#00c805]" />
             Season 1 · Halving live
           </div>
