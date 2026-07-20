@@ -369,15 +369,38 @@ function OilSlicks() {
   );
 }
 
-const MOUNTAIN_RIDGE = [
-  [-52, -76, 18, 20], [-37, -78, 11, 15], [-21, -77, 16, 19], [-4, -79, 12, 16],
-  [16, -77, 19, 23], [39, -78, 13, 18], [57, -76, 21, 24],
+/**
+ * Distant ranges across the water — the island's horizon. Grouped into massifs
+ * of overlapping peaks (never a row of lone cones) and pushed far enough out
+ * that the scene fog reduces them to layered silhouettes, which is what sells
+ * the depth. [x, z, radius, height] per peak.
+ */
+const RANGES: ReadonlyArray<readonly (readonly [number, number, number, number])[]> = [
+  // North massif — the big backdrop behind the compound.
+  [[-46, -128, 34, 26], [-18, -138, 42, 32], [8, -126, 30, 22], [30, -140, 38, 27], [55, -128, 26, 18]],
+  // East range, lower and farther between the peaks.
+  [[118, -48, 30, 20], [132, -14, 38, 26], [122, 22, 26, 16]],
+  // Western mesas — two flat-topped forms so the skyline is not all triangles.
+  [[-122, -30, 26, 14], [-136, 8, 34, 18]],
+] as const;
+
+/** Soft sand dunes inside the coast, keeping the island edge from being flat. */
+const DUNES = [
+  [-38, -34, 9, 1.9], [-24, -40, 12, 2.4], [6, -40, 10, 2.0], [26, -36, 8, 1.6],
+  [36, -18, 9, 1.8], [38, 8, 7, 1.4], [30, 24, 10, 2.0], [-40, 20, 8, 1.6],
+  [-44, -6, 7, 1.3], [8, 27, 9, 1.6],
 ] as const;
 
 const ROCK_SCATTER = [
-  [-34, -24, 1.1], [-28, 13, 0.75], [-20, 18, 0.95], [-10, -25, 0.65], [-4, 13, 1.2],
-  [4, -20, 0.82], [12, 15, 0.62], [24, -21, 1.1], [29, 6, 0.72], [36, -12, 0.9],
-  [-39, 22, 1.3], [40, 18, 1.15],
+  [-34, -24, 1.1], [-28, 15, 0.75], [-20, 21, 0.95], [-10, -25, 0.65], [-6, 15, 1.2],
+  [4, -22, 0.82], [14, 19, 0.62], [24, -21, 1.1], [29, 8, 0.72], [36, -12, 0.9],
+  [-41, 24, 1.3], [40, 18, 1.15], [-44, -14, 0.85], [18, 26, 0.7],
+] as const;
+
+/** Dry desert brush — squashed low-poly tufts, the only "vegetation" out here. */
+const BRUSH_SCATTER = [
+  [-31, -28, 0.55], [-16, 22, 0.4], [-42, 12, 0.6], [-8, -27, 0.45], [10, 24, 0.5],
+  [27, -26, 0.42], [38, 2, 0.55], [33, 15, 0.38], [-45, -20, 0.5], [20, 22, 0.44],
 ] as const;
 
 function Pipe({ position, length, axis = 'x' }: { position: [number, number, number]; length: number; axis?: 'x' | 'z' }) {
@@ -408,21 +431,129 @@ function Tank({ position, radius, height }: { position: [number, number, number]
   );
 }
 
-function UtilityPole({ position }: { position: [number, number, number] }) {
+/**
+ * A pole line WITH its wires. Poles without wires read as fence posts; the sag
+ * between crossarms is what makes a power line a power line. Wires are thin
+ * quadratic-bezier tubes drooping between consecutive crossarm tips.
+ */
+function PoleLine({ x, zs }: { x: number; zs: readonly number[] }) {
+  const wires = useMemo(() => {
+    const geoms: THREE.TubeGeometry[] = [];
+    for (let i = 0; i < zs.length - 1; i += 1) {
+      for (const arm of [-0.85, 0.85]) {
+        const a = new THREE.Vector3(x + arm, 4.62, zs[i]);
+        const b = new THREE.Vector3(x + arm, 4.62, zs[i + 1]);
+        const mid = a.clone().lerp(b, 0.5);
+        mid.y -= 0.55; // catenary sag
+        const curve = new THREE.QuadraticBezierCurve3(a, mid, b);
+        geoms.push(new THREE.TubeGeometry(curve, 14, 0.022, 4, false));
+      }
+    }
+    return geoms;
+  }, [x, zs]);
+  return (
+    <group>
+      {zs.map((z) => (
+        <group key={z} position={[x, 0, z]}>
+          <mesh position={[0, 2.6, 0]} castShadow>
+            <cylinderGeometry args={[0.1, 0.16, 5.2, 8]} />
+            <meshStandardMaterial color="#3b3129" roughness={0.9} />
+          </mesh>
+          {/* crossarm perpendicular to the run so the wires pass along it */}
+          <mesh position={[0, 4.68, 0]} castShadow>
+            <boxGeometry args={[2.0, 0.11, 0.11]} />
+            <meshStandardMaterial color="#4a3b2c" roughness={0.8} />
+          </mesh>
+          {[-0.85, 0.85].map((ax) => (
+            <mesh key={ax} position={[ax, 4.58, 0]}>
+              <sphereGeometry args={[0.07, 6, 5]} />
+              <meshStandardMaterial color="#b7c0c4" metalness={0.4} roughness={0.4} />
+            </mesh>
+          ))}
+        </group>
+      ))}
+      {wires.map((geom, i) => (
+        <mesh key={i} geometry={geom}>
+          <meshStandardMaterial color="#1c1a18" roughness={0.7} />
+        </mesh>
+      ))}
+    </group>
+  );
+}
+
+/**
+ * A dirt track with wheel ruts: a bed of disturbed sand plus two darker
+ * parallel strips where tyres run. Ruts are what make it read as a road driven
+ * on daily rather than a painted stripe.
+ */
+function DirtRoad({
+  position,
+  length,
+  width = 3.4,
+  axis = 'z',
+}: {
+  position: [number, number, number];
+  length: number;
+  width?: number;
+  axis?: 'x' | 'z';
+}) {
+  const rot: [number, number, number] = axis === 'z' ? [-Math.PI / 2, 0, 0] : [-Math.PI / 2, 0, Math.PI / 2];
+  const rutOffset = width * 0.22;
   return (
     <group position={position}>
-      <mesh position={[0, 2.6, 0]} castShadow>
-        <cylinderGeometry args={[0.12, 0.18, 5.2, 8]} />
-        <meshStandardMaterial color="#352d28" metalness={0.5} roughness={0.5} />
+      <mesh rotation={rot} receiveShadow>
+        <planeGeometry args={[width, length]} />
+        <meshStandardMaterial color="#6b5138" roughness={0.98} />
       </mesh>
-      <mesh position={[0, 4.75, 0]} castShadow>
-        <boxGeometry args={[2.1, 0.12, 0.12]} />
-        <meshStandardMaterial color="#4a3b2c" metalness={0.65} roughness={0.4} />
+      {[-rutOffset, rutOffset].map((o) => (
+        <mesh
+          key={o}
+          position={axis === 'z' ? [o, 0.006, 0] : [0, 0.006, o]}
+          rotation={rot}
+        >
+          <planeGeometry args={[0.5, length]} />
+          <meshStandardMaterial color="#4e3a27" roughness={1} />
+        </mesh>
+      ))}
+    </group>
+  );
+}
+
+/** Gathering pipeline: a long line on regular support saddles, with end risers. */
+function PipeRun({ from, to, y = 0.9 }: { from: [number, number]; to: [number, number]; y?: number }) {
+  const dx = to[0] - from[0];
+  const dz = to[1] - from[1];
+  const length = Math.hypot(dx, dz);
+  const angle = Math.atan2(dz, dx);
+  const mid: [number, number] = [(from[0] + to[0]) / 2, (from[1] + to[1]) / 2];
+  const supports = Math.max(2, Math.floor(length / 4));
+  return (
+    <group position={[mid[0], 0, mid[1]]} rotation={[0, -angle, 0]}>
+      <mesh position={[0, y, 0]} rotation={[0, 0, Math.PI / 2]} castShadow>
+        <cylinderGeometry args={[0.24, 0.24, length, 10]} />
+        <meshStandardMaterial color="#4c3d2e" metalness={0.75} roughness={0.4} />
       </mesh>
-      {[-0.85, 0.85].map((x) => (
-        <mesh key={x} position={[x, 4.68, 0]}>
-          <sphereGeometry args={[0.11, 8, 6]} />
-          <meshStandardMaterial color="#c49a62" roughness={0.35} />
+      {Array.from({ length: supports }, (_, i) => {
+        const t = supports === 1 ? 0 : i / (supports - 1);
+        const sx = (t - 0.5) * (length - 1.2);
+        return (
+          <group key={i} position={[sx, 0, 0]}>
+            <mesh position={[0, y * 0.5 - 0.05, 0]} castShadow>
+              <boxGeometry args={[0.3, y - 0.1, 0.3]} />
+              <meshStandardMaterial color="#3a322b" roughness={0.85} />
+            </mesh>
+            <mesh position={[0, y - 0.12, 0]}>
+              <boxGeometry args={[0.44, 0.14, 0.5]} />
+              <meshStandardMaterial color="#2c2622" metalness={0.6} roughness={0.5} />
+            </mesh>
+          </group>
+        );
+      })}
+      {/* end risers dropping into the ground at both ends */}
+      {[-1, 1].map((end) => (
+        <mesh key={end} position={[end * (length / 2 - 0.1), y * 0.5, 0]} castShadow>
+          <cylinderGeometry args={[0.2, 0.2, y, 8]} />
+          <meshStandardMaterial color="#4c3d2e" metalness={0.75} roughness={0.4} />
         </mesh>
       ))}
     </group>
@@ -450,62 +581,124 @@ function FlareStack({ position }: { position: [number, number, number] }) {
 }
 
 function WorldSetDressing({ preset }: { preset: LightingPreset }) {
-  const mountainColor = preset === 'night' ? '#111827' : preset === 'neutral' ? '#45505e' : '#3a2524';
-  const roadColor = preset === 'night' ? '#171518' : '#4b382b';
+  const night = preset === 'night';
+  // Farther massifs are lighter (atmospheric perspective); fog does the rest.
+  const rangeNear = night ? '#101724' : preset === 'neutral' ? '#3e4a58' : '#402a2c';
+  const rangeFar = night ? '#131c2c' : preset === 'neutral' ? '#4c5866' : '#4e3438';
+  const duneColor = night ? '#241d15' : '#8a6a45';
 
   return (
     <group>
-      <group position={[0, -0.3, 0]}>
-        {MOUNTAIN_RIDGE.map(([x, z, radius, height], index) => (
-          <mesh key={index} position={[x, height * 0.32, z]} rotation={[0, index * 0.37, 0]} receiveShadow>
-            <coneGeometry args={[radius, height, 6]} />
-            <meshStandardMaterial color={mountainColor} roughness={0.98} flatShading />
-          </mesh>
-        ))}
-      </group>
+      {/* Horizon: massifs rising from the sea beyond the coast, never a row of
+          lone cones. Each massif overlaps 2-5 peaks; the western pair are
+          flat-topped mesas so the whole skyline is not triangles. */}
+      {RANGES.map((massif, m) => (
+        <group key={m} position={[0, -0.6, 0]}>
+          {massif.map(([x, z, radius, height], i) => {
+            const mesa = m === 2;
+            return (
+              <mesh key={i} position={[x, height * (mesa ? 0.5 : 0.42), z]} rotation={[0, i * 0.9 + m, 0]}>
+                {mesa ? (
+                  <cylinderGeometry args={[radius * 0.55, radius, height, 9]} />
+                ) : (
+                  <coneGeometry args={[radius, height, 8]} />
+                )}
+                <meshStandardMaterial color={m === 0 ? rangeNear : rangeFar} roughness={1} flatShading fog />
+              </mesh>
+            );
+          })}
+        </group>
+      ))}
 
-      <mesh position={[-4, 0.004, 4]} rotation={[-Math.PI / 2, 0, 0]} receiveShadow>
-        <planeGeometry args={[88, 3.3]} />
-        <meshStandardMaterial color={roadColor} roughness={0.95} />
-      </mesh>
-      <mesh position={[-31, 0.006, -4]} rotation={[-Math.PI / 2, 0, Math.PI / 2]} receiveShadow>
-        <planeGeometry args={[31, 2.6]} />
-        <meshStandardMaterial color={roadColor} roughness={0.95} />
-      </mesh>
-
-      <group position={[-33, 0, 11]}>
-        <Tank position={[0, 0, 0]} radius={2.3} height={4.4} />
-        <Tank position={[-5.3, 0, 1.1]} radius={1.7} height={3.1} />
-        <FlareStack position={[5.4, 0, -1.8]} />
-      </group>
-      <Pipe position={[-27.5, 1.05, 9.2]} length={12} />
-      <Pipe position={[-21.5, 1.05, 2.6]} length={13.2} axis="z" />
-      <Pipe position={[-18.1, 1.05, -4]} length={6.6} />
-      {[-30, -21, -12, -3, 6, 15, 24].map((x) => <UtilityPole key={x} position={[x, 0, 17]} />)}
-
-      <group position={[19, 0.03, 7]}>
-        <mesh position={[0, 0.12, 0]} rotation={[-Math.PI / 2, 0, 0]}>
-          <planeGeometry args={[17, 2.1]} />
-          <meshStandardMaterial color="#2b2525" metalness={0.5} roughness={0.62} />
+      {/* Island-edge dunes: smooth low mounds (deliberately NOT flat-shaded) so
+          the ground swells before it meets the surf. */}
+      {DUNES.map(([x, z, r, h], i) => (
+        <mesh key={i} position={[x, -0.35, z]} scale={[1, h / r, 0.72]} rotation={[0, i * 1.3, 0]} receiveShadow>
+          <sphereGeometry args={[r, 18, 12, 0, Math.PI * 2, 0, Math.PI / 2]} />
+          <meshStandardMaterial color={duneColor} roughness={1} />
         </mesh>
-        {[-0.45, 0.45].map((z) => (
-          <mesh key={z} position={[0, 0.13, z]} rotation={[0, 0, Math.PI / 2]}>
-            <boxGeometry args={[17, 0.09, 0.09]} />
-            <meshStandardMaterial color="#16191b" metalness={0.85} roughness={0.3} />
+      ))}
+
+      {/* Haul road: north-south through the corridor between the oil and mine
+          pad rows, with a spur west to the tank farm through the row gap. */}
+      <DirtRoad position={[-2, 0.008, -6]} length={68} axis="z" />
+      <DirtRoad position={[-20.5, 0.01, 6]} length={31} width={2.4} axis="x" />
+
+      {/* Tank farm on a concrete pad inside a containment berm — where the
+          gathering line ends up. */}
+      <group position={[-38, 0, 6]}>
+        <mesh position={[0, 0.06, 0]} receiveShadow>
+          <cylinderGeometry args={[7.6, 7.6, 0.12, 24]} />
+          <meshStandardMaterial color="#55504a" roughness={0.9} />
+        </mesh>
+        <mesh position={[0, 0.22, 0]} scale={[1, 0.42, 1]}>
+          <torusGeometry args={[7.9, 0.55, 8, 28]} />
+          <meshStandardMaterial color="#6d5438" roughness={1} />
+        </mesh>
+        <Tank position={[-2.2, 0.12, -1.8]} radius={2.3} height={4.4} />
+        <Tank position={[2.8, 0.12, 1.6]} radius={1.7} height={3.1} />
+        <Tank position={[2.4, 0.12, -2.6]} radius={1.15} height={2.3} />
+        <FlareStack position={[-4.6, 0.12, 3.4]} />
+        {/* farm manifold linking the tanks */}
+        <Pipe position={[0.4, 0.5, -0.4]} length={5.6} />
+        <Pipe position={[2.6, 0.5, -0.6]} length={3.6} axis="z" />
+      </group>
+
+      {/* Gathering line from the western pad row into the farm. */}
+      <PipeRun from={[-30, -6]} to={[-33.5, 4]} />
+
+      {/* Power line following the haul road. */}
+      <PoleLine x={1.4} zs={[-38, -26, -14, -2, 10, 22]} />
+
+      {/* Mine-side laydown yard: crate stack + cable spools where the rail
+          strip used to float. */}
+      <group position={[27, 0, 2]}>
+        {([[0, 0, 0.9], [1.7, 0.2, 0.7], [0.7, 0.9, 0.75]] as const).map(([x, z, s], i) => (
+          <mesh key={i} position={[x, s * 0.5, z]} rotation={[0, i * 0.5, 0]} castShadow receiveShadow>
+            <boxGeometry args={[s * 1.5, s, s * 1.5]} />
+            <meshStandardMaterial color={i === 1 ? '#4c3b28' : '#5d4a32'} roughness={0.9} />
           </mesh>
         ))}
-        {[-7, -4, -1, 2, 5, 8].map((x) => (
-          <mesh key={x} position={[x, 0.16, 0]}>
-            <boxGeometry args={[0.12, 0.09, 1.7]} />
-            <meshStandardMaterial color="#5d4530" roughness={0.8} />
+        {([[-2.4, 1.4], [-2.1, -0.9]] as const).map(([x, z], i) => (
+          <mesh key={i} position={[x, 0.55, z]} rotation={[0, 0, Math.PI / 2]} castShadow>
+            <cylinderGeometry args={[0.55, 0.55, 0.5, 12]} />
+            <meshStandardMaterial color="#6b4326" roughness={0.8} />
           </mesh>
         ))}
       </group>
 
+      {/* Rocks: non-uniform scales and three tones so no two read identical,
+          with pebbles at the base of the larger ones. */}
       {ROCK_SCATTER.map(([x, z, size], index) => (
-        <mesh key={index} position={[x, size * 0.32, z]} rotation={[0.15 * index, index * 0.61, 0]} castShadow receiveShadow>
-          <dodecahedronGeometry args={[size, 0]} />
-          <meshStandardMaterial color={index % 2 ? '#5a412e' : '#3c302a'} roughness={0.96} flatShading />
+        <group key={index} position={[x, 0, z]}>
+          <mesh
+            position={[0, size * 0.3, 0]}
+            scale={[1, 0.62 + (index % 3) * 0.16, 0.82 + (index % 2) * 0.2]}
+            rotation={[0.15 * index, index * 0.61, 0.08 * index]}
+            castShadow
+            receiveShadow
+          >
+            <dodecahedronGeometry args={[size, 0]} />
+            <meshStandardMaterial
+              color={index % 3 === 0 ? '#5a412e' : index % 3 === 1 ? '#4a3a2c' : '#3c302a'}
+              roughness={0.96}
+              flatShading
+            />
+          </mesh>
+          {size > 0.9 && (
+            <mesh position={[size * 0.9, 0.1, size * 0.4]} rotation={[0, index, 0]} receiveShadow>
+              <dodecahedronGeometry args={[size * 0.28, 0]} />
+              <meshStandardMaterial color="#4a3a2c" roughness={1} flatShading />
+            </mesh>
+          )}
+        </group>
+      ))}
+
+      {/* Dry brush — sparse, squashed, olive-dead. The only vegetation. */}
+      {BRUSH_SCATTER.map(([x, z, s], i) => (
+        <mesh key={i} position={[x, s * 0.4, z]} scale={[1, 0.68, 1]} rotation={[0, i * 2.1, 0]} castShadow>
+          <icosahedronGeometry args={[s, 0]} />
+          <meshStandardMaterial color={i % 2 ? '#5d5433' : '#4f4a30'} roughness={1} flatShading />
         </mesh>
       ))}
     </group>
@@ -559,7 +752,7 @@ export function Compound({
   return (
     <group>
       {preset === 'night' && <color attach="background" args={[p.sky]} />}
-      <fog attach="fog" args={[p.fog, 70, 200]} />
+      <fog attach="fog" args={[p.fog, 70, 265]} />
       <hemisphereLight
         color={preset === 'night' ? '#273a66' : '#9cb8d2'}
         groundColor={preset === 'night' ? '#070912' : '#72513a'}

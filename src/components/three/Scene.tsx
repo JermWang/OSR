@@ -178,7 +178,7 @@ export default function Scene({
     <Canvas
       shadows="soft"
       dpr={[1, 2]}
-      camera={{ position: landing ? [1, 9.5, 15] : [1, 22, 36], fov: landing ? 42 : 44, near: 0.1, far: 260 }}
+      camera={{ position: landing ? [1, 9.5, 15] : [1, 22, 36], fov: landing ? 42 : 44, near: 0.1, far: 420 }}
       gl={{
         antialias: true,
         alpha: false,
