@@ -1,7 +1,7 @@
 'use client';
 
-// The compound world: sand terrain with a water quadrant (oil side), node
-// placement, lighting presets, and environment.
+// The compound world: a drilling island — sea at the outskirts, oil slicks
+// around the pads, node placement, lighting presets, and environment.
 
 import { useMemo, useRef } from 'react';
 import * as THREE from 'three';
@@ -21,7 +21,7 @@ export const LIGHTING_PRESETS: Record<
   night: { sun: [-20, 18, -40], sunColor: '#7a9fff', sunIntensity: 0.6, ambient: 0.22, sky: '#070a18', fog: '#0c1226', envIntensity: 0.25 },
 };
 
-/** Oil rigs on the water (left/west), mines on the land (right/east). */
+/** Oil rigs west, mines east — all on the island; the sea is scenery. */
 export function nodePosition(index: number, family: 'oil' | 'mine', seed: number): [number, number, number] {
   const col = family === 'oil' ? -1 : 1;
   const row = Math.floor(index / 2);
@@ -60,13 +60,13 @@ export const SHOWROOM_NODES: RigNodeData[] = [
 ];
 
 /**
- * Water pools scattered across the map by seeded grid-jitter, rather than one
- * slab on the west edge. The terrain is divided into a coarse grid; each cell
- * gets one jittered pool (a few cells left dry for natural gaps), so water is
- * spread evenly-but-irregularly over the whole compound. Deterministic — the
- * seeded RNG makes the layout stable across renders instead of jumping around.
+ * Oil slicks pooled around the drilling pads. Water no longer sits inside the
+ * sand — the compound is an island (the sea is the horizon, drawn separately) —
+ * so what collects around working rigs is what would actually collect there:
+ * crude. Placement is deterministic, clustered a few units off each pad site
+ * rather than gridded across the map, weighted toward the oil-rig side.
  */
-const WATER_POOLS: Array<{ x: number; z: number; size: number; y: number; rot: number }> = (() => {
+const OIL_PUDDLES: Array<{ x: number; z: number; size: number; y: number }> = (() => {
   let s = 0x9e3779b9 >>> 0;
   const rnd = () => {
     s = (s + 0x6d2b79f5) >>> 0;
@@ -74,25 +74,29 @@ const WATER_POOLS: Array<{ x: number; z: number; size: number; y: number; rot: n
     t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
     return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
   };
-  const pools: Array<{ x: number; z: number; size: number; y: number; rot: number }> = [];
-  const cols = 4;
-  const rows = 3;
-  const x0 = -46;
-  const x1 = 40;
-  const z0 = -44;
-  const z1 = 26;
-  const cw = (x1 - x0) / cols;
-  const cd = (z1 - z0) / rows;
-  for (let c = 0; c < cols; c += 1) {
-    for (let r = 0; r < rows; r += 1) {
-      if (rnd() < 0.18) continue; // leave the odd cell dry for natural sand gaps
-      const x = x0 + (c + 0.5) * cw + (rnd() - 0.5) * cw * 0.5;
-      const z = z0 + (r + 0.5) * cd + (rnd() - 0.5) * cd * 0.5;
-      const size = 13 + rnd() * 15;
-      pools.push({ x, z, size, y: -0.33 + (rnd() - 0.5) * 0.03, rot: rnd() * Math.PI });
+  // Pad sites from nodePosition(): oil west at x=-13/-23, mines east at 9/19,
+  // rows every 12 in z. Oil pads seep 2 slicks each, mine pads only 1 — crude
+  // belongs to the drilling side.
+  const oilPads: Array<[number, number]> = [[-13, -12], [-23, -12], [-13, 0], [-23, 0]];
+  const minePads: Array<[number, number]> = [[9, -12], [19, 0]];
+  const puddles: Array<{ x: number; z: number; size: number; y: number }> = [];
+  const seep = (px: number, pz: number, count: number) => {
+    for (let i = 0; i < count; i += 1) {
+      const ang = rnd() * Math.PI * 2;
+      const dist = 5.5 + rnd() * 3.5; // clear of the pad, close enough to read as its runoff
+      puddles.push({
+        x: px + Math.cos(ang) * dist,
+        z: pz + Math.sin(ang) * dist,
+        size: 4.5 + rnd() * 4,
+        // Just above the flattened pad plane; puddles hug the pads, so the
+        // surrounding dunes never rise through them.
+        y: 0.015 + rnd() * 0.01,
+      });
     }
-  }
-  return pools;
+  };
+  oilPads.forEach(([x, z]) => seep(x, z, 2));
+  minePads.forEach(([x, z]) => seep(x, z, 1));
+  return puddles;
 })();
 
 /**
@@ -205,18 +209,104 @@ void main(){
   water += uGlint * specular * 0.60;
   water = mix(water, vec3(0.92, 0.95, 0.94), crest * 0.35);
 
-  // Circular pool mask: fade the square plane into a soft round pool edge so
-  // scattered pools read as water bodies, not tiles.
-  float edge = length(vUv - 0.5) * 2.0;
-  float mask = 1.0 - smoothstep(0.82, 0.99, edge);
-  if (mask < 0.01) discard;
-  gl_FragColor = vec4(water, 0.94 * mask);
+  // The sea exists only OUTSIDE the island. Rounded-rectangle SDF around the
+  // playfield — negative inland (discarded), positive offshore — with a
+  // noise-wobbled coastline and a surf band so sand meets foam, not a line.
+  vec2 dRect = abs(q - vec2(-3.0, -8.0)) - vec2(38.0, 32.0);
+  float sdf = length(max(dRect, 0.0)) + min(max(dRect.x, dRect.y), 0.0) - 14.0;
+  sdf += (vnoise(q * 0.06) - 0.5) * 7.0;
+  if (sdf < 0.0) discard;
+  float shore = smoothstep(0.0, 5.0, sdf);
+  float surf = (1.0 - smoothstep(0.4, 4.5, sdf))
+             * smoothstep(0.35, 0.75, vnoise(q * 1.4 + uTime * 0.18));
+  water = mix(water, vec3(0.93, 0.96, 0.95), surf * 0.55);
+  gl_FragColor = vec4(water, 0.94 * max(shore, surf * 0.8));
 }`;
 
-function Water({ color = '#286b7f', glint = '#ffd194' }: { color?: string; glint?: string }) {
-  // One shared material for every pool: the ripple/caustic fields are computed
-  // in world space, so a single material keeps all pools looking like the same
-  // body of water sampled at different spots, and animates them in one place.
+/**
+ * Crude, not water: a puddle has no swell, so there is no vertex displacement —
+ * the surface is a glossy static film whose life comes from a slow-creeping
+ * normal, a tight hot specular, and the thin-film petrol rainbow at glancing
+ * angles. Blob outlines are wobbled by world-space noise so every puddle is
+ * irregular while all of them share one material.
+ */
+const OIL_VERT = `
+varying vec2 vUv;
+varying vec3 vWorldPosition;
+void main(){
+  vUv = uv;
+  vWorldPosition = (modelMatrix * vec4(position, 1.0)).xyz;
+  gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+}`;
+
+const OIL_FRAG = `
+uniform float uTime;
+uniform vec3 uSheen;
+varying vec2 vUv;
+varying vec3 vWorldPosition;
+
+float hash(vec2 p){
+  p = fract(p * vec2(123.34, 456.21));
+  p += dot(p, p + 45.32);
+  return fract(p.x * p.y);
+}
+float vnoise(vec2 p){
+  vec2 i = floor(p), f = fract(p);
+  vec2 u = f * f * (3.0 - 2.0 * f);
+  return mix(
+    mix(hash(i), hash(i + vec2(1.0, 0.0)), u.x),
+    mix(hash(i + vec2(0.0, 1.0)), hash(i + vec2(1.0, 1.0)), u.x),
+    u.y);
+}
+float film(vec2 q, float t){
+  return vnoise(q * 1.1 + t * 0.016) * 0.6 + vnoise(q * 2.6 - t * 0.011) * 0.4;
+}
+
+void main(){
+  vec2 q = vWorldPosition.xz;
+
+  // Irregular blob mask: radial falloff warped by world-space noise, so each
+  // puddle's outline differs without per-puddle uniforms.
+  float edge = length(vUv - 0.5) * 2.0 + (vnoise(q * 0.55) - 0.5) * 0.5;
+  float mask = 1.0 - smoothstep(0.68, 0.95, edge);
+  if (mask < 0.01) discard;
+
+  // Barely-moving surface — oil creeps, it does not lap. Time factors are an
+  // order of magnitude below the sea's.
+  float e = 0.3;
+  float h  = film(q, uTime);
+  float hX = film(q + vec2(e, 0.0), uTime);
+  float hZ = film(q + vec2(0.0, e), uTime);
+  vec3 normal = normalize(vec3(-(hX - h) * 1.2, 1.0, -(hZ - h) * 1.2));
+
+  vec3 viewDir = normalize(cameraPosition - vWorldPosition);
+  vec3 sunDir = normalize(vec3(0.42, 0.78, -0.34));
+  float fresnel = pow(1.0 - max(dot(normal, viewDir), 0.0), 2.6);
+  vec3 reflDir = reflect(-sunDir, normal);
+  // Oil is far glossier than water — tight hot highlight.
+  float specular = pow(max(dot(reflDir, viewDir), 0.0), 180.0);
+
+  vec3 oil = mix(vec3(0.016, 0.012, 0.008), vec3(0.055, 0.038, 0.02), h * 0.6);
+  // Thin-film interference: hue cycles with height and viewing angle — the
+  // petrol-rainbow signature, kept subtle and mostly at glancing angles.
+  vec3 rainbow = 0.5 + 0.5 * cos(6.2831 * (h * 1.6 + fresnel * 2.1) + vec3(0.0, 2.1, 4.2));
+  oil += rainbow * uSheen * fresnel * 0.22;
+  oil += vec3(1.0, 0.96, 0.88) * specular * 0.85;
+  oil += vec3(0.35, 0.33, 0.30) * fresnel * 0.10; // sky sheen so the film reads wet
+
+  // Darker rim where the crude has soaked into the sand.
+  float rim = smoothstep(0.52, 0.9, edge);
+  oil = mix(oil, vec3(0.03, 0.022, 0.014), rim * 0.35);
+
+  gl_FragColor = vec4(oil, mask * 0.96);
+}`;
+
+/**
+ * The sea, drawn as one large sheet whose fragment shader cuts out the island —
+ * the compound reads as a drilling island with surf at its outskirts rather
+ * than sand with lakes in it.
+ */
+function Sea({ color = '#286b7f', glint = '#ffd194' }: { color?: string; glint?: string }) {
   const material = useMemo(() => {
     const deep = new THREE.Color(color);
     return new THREE.ShaderMaterial({
@@ -236,15 +326,186 @@ function Water({ color = '#286b7f', glint = '#ffd194' }: { color?: string; glint
     material.uniforms.uTime.value = clock.elapsedTime;
   });
   return (
+    <mesh position={[-3, -0.42, -8]} rotation={[-Math.PI / 2, 0, 0]} material={material}>
+      <planeGeometry args={[640, 640, 128, 128]} />
+    </mesh>
+  );
+}
+
+function OilSlicks() {
+  // One shared static-film material (see OIL_FRAG): oil must not wave or glint
+  // like the sea, so it deliberately does NOT reuse the water shader.
+  const material = useMemo(
+    () =>
+      new THREE.ShaderMaterial({
+        transparent: true,
+        depthWrite: false,
+        uniforms: {
+          uTime: { value: 0 },
+          uSheen: { value: new THREE.Color('#6f5fd4') },
+        },
+        vertexShader: OIL_VERT,
+        fragmentShader: OIL_FRAG,
+      }),
+    []
+  );
+  useFrame(({ clock }) => {
+    material.uniforms.uTime.value = clock.elapsedTime;
+  });
+  return (
     <group>
-      {WATER_POOLS.map((pool, i) => (
+      {OIL_PUDDLES.map((puddle, i) => (
         <mesh
           key={i}
-          position={[pool.x, pool.y, pool.z]}
-          rotation={[-Math.PI / 2, 0, pool.rot]}
+          position={[puddle.x, puddle.y, puddle.z]}
+          rotation={[-Math.PI / 2, 0, i * 1.73]}
+          scale={[1, 0.62 + (i % 3) * 0.1, 1]}
           material={material}
         >
-          <planeGeometry args={[pool.size, pool.size, 40, 40]} />
+          <planeGeometry args={[puddle.size, puddle.size]} />
+        </mesh>
+      ))}
+    </group>
+  );
+}
+
+const MOUNTAIN_RIDGE = [
+  [-52, -76, 18, 20], [-37, -78, 11, 15], [-21, -77, 16, 19], [-4, -79, 12, 16],
+  [16, -77, 19, 23], [39, -78, 13, 18], [57, -76, 21, 24],
+] as const;
+
+const ROCK_SCATTER = [
+  [-34, -24, 1.1], [-28, 13, 0.75], [-20, 18, 0.95], [-10, -25, 0.65], [-4, 13, 1.2],
+  [4, -20, 0.82], [12, 15, 0.62], [24, -21, 1.1], [29, 6, 0.72], [36, -12, 0.9],
+  [-39, 22, 1.3], [40, 18, 1.15],
+] as const;
+
+function Pipe({ position, length, axis = 'x' }: { position: [number, number, number]; length: number; axis?: 'x' | 'z' }) {
+  return (
+    <mesh position={position} rotation={axis === 'x' ? [0, 0, Math.PI / 2] : [Math.PI / 2, 0, 0]} castShadow receiveShadow>
+      <cylinderGeometry args={[0.22, 0.22, length, 10]} />
+      <meshStandardMaterial color="#44362b" metalness={0.8} roughness={0.34} />
+    </mesh>
+  );
+}
+
+function Tank({ position, radius, height }: { position: [number, number, number]; radius: number; height: number }) {
+  return (
+    <group position={position}>
+      <mesh position={[0, height * 0.5, 0]} castShadow receiveShadow>
+        <cylinderGeometry args={[radius, radius, height, 16]} />
+        <meshStandardMaterial color="#393334" metalness={0.75} roughness={0.44} />
+      </mesh>
+      <mesh position={[0, height + 0.1, 0]} castShadow>
+        <cylinderGeometry args={[radius * 0.92, radius, 0.24, 16]} />
+        <meshStandardMaterial color="#5b4735" metalness={0.7} roughness={0.34} />
+      </mesh>
+      <mesh position={[0, height * 0.7, 0]}>
+        <torusGeometry args={[radius * 1.01, 0.07, 6, 16]} />
+        <meshStandardMaterial color="#a56c2a" metalness={0.8} roughness={0.3} />
+      </mesh>
+    </group>
+  );
+}
+
+function UtilityPole({ position }: { position: [number, number, number] }) {
+  return (
+    <group position={position}>
+      <mesh position={[0, 2.6, 0]} castShadow>
+        <cylinderGeometry args={[0.12, 0.18, 5.2, 8]} />
+        <meshStandardMaterial color="#352d28" metalness={0.5} roughness={0.5} />
+      </mesh>
+      <mesh position={[0, 4.75, 0]} castShadow>
+        <boxGeometry args={[2.1, 0.12, 0.12]} />
+        <meshStandardMaterial color="#4a3b2c" metalness={0.65} roughness={0.4} />
+      </mesh>
+      {[-0.85, 0.85].map((x) => (
+        <mesh key={x} position={[x, 4.68, 0]}>
+          <sphereGeometry args={[0.11, 8, 6]} />
+          <meshStandardMaterial color="#c49a62" roughness={0.35} />
+        </mesh>
+      ))}
+    </group>
+  );
+}
+
+function FlareStack({ position }: { position: [number, number, number] }) {
+  return (
+    <group position={position}>
+      <mesh position={[0, 3.4, 0]} castShadow>
+        <cylinderGeometry args={[0.28, 0.42, 6.8, 10]} />
+        <meshStandardMaterial color="#312c2c" metalness={0.82} roughness={0.34} />
+      </mesh>
+      <mesh position={[0, 6.9, 0]} castShadow>
+        <cylinderGeometry args={[0.55, 0.28, 0.35, 10]} />
+        <meshStandardMaterial color="#b66f27" metalness={0.6} roughness={0.28} />
+      </mesh>
+      <pointLight position={[0, 7.25, 0]} color="#ff9d42" intensity={1.5} distance={12} decay={2} />
+      <mesh position={[0, 7.3, 0]}>
+        <sphereGeometry args={[0.3, 10, 8]} />
+        <meshStandardMaterial color="#ff9d42" emissive="#ff6500" emissiveIntensity={3.5} />
+      </mesh>
+    </group>
+  );
+}
+
+function WorldSetDressing({ preset }: { preset: LightingPreset }) {
+  const mountainColor = preset === 'night' ? '#111827' : preset === 'neutral' ? '#45505e' : '#3a2524';
+  const roadColor = preset === 'night' ? '#171518' : '#4b382b';
+
+  return (
+    <group>
+      <group position={[0, -0.3, 0]}>
+        {MOUNTAIN_RIDGE.map(([x, z, radius, height], index) => (
+          <mesh key={index} position={[x, height * 0.32, z]} rotation={[0, index * 0.37, 0]} receiveShadow>
+            <coneGeometry args={[radius, height, 6]} />
+            <meshStandardMaterial color={mountainColor} roughness={0.98} flatShading />
+          </mesh>
+        ))}
+      </group>
+
+      <mesh position={[-4, 0.004, 4]} rotation={[-Math.PI / 2, 0, 0]} receiveShadow>
+        <planeGeometry args={[88, 3.3]} />
+        <meshStandardMaterial color={roadColor} roughness={0.95} />
+      </mesh>
+      <mesh position={[-31, 0.006, -4]} rotation={[-Math.PI / 2, 0, Math.PI / 2]} receiveShadow>
+        <planeGeometry args={[31, 2.6]} />
+        <meshStandardMaterial color={roadColor} roughness={0.95} />
+      </mesh>
+
+      <group position={[-33, 0, 11]}>
+        <Tank position={[0, 0, 0]} radius={2.3} height={4.4} />
+        <Tank position={[-5.3, 0, 1.1]} radius={1.7} height={3.1} />
+        <FlareStack position={[5.4, 0, -1.8]} />
+      </group>
+      <Pipe position={[-27.5, 1.05, 9.2]} length={12} />
+      <Pipe position={[-21.5, 1.05, 2.6]} length={13.2} axis="z" />
+      <Pipe position={[-18.1, 1.05, -4]} length={6.6} />
+      {[-30, -21, -12, -3, 6, 15, 24].map((x) => <UtilityPole key={x} position={[x, 0, 17]} />)}
+
+      <group position={[19, 0.03, 7]}>
+        <mesh position={[0, 0.12, 0]} rotation={[-Math.PI / 2, 0, 0]}>
+          <planeGeometry args={[17, 2.1]} />
+          <meshStandardMaterial color="#2b2525" metalness={0.5} roughness={0.62} />
+        </mesh>
+        {[-0.45, 0.45].map((z) => (
+          <mesh key={z} position={[0, 0.13, z]} rotation={[0, 0, Math.PI / 2]}>
+            <boxGeometry args={[17, 0.09, 0.09]} />
+            <meshStandardMaterial color="#16191b" metalness={0.85} roughness={0.3} />
+          </mesh>
+        ))}
+        {[-7, -4, -1, 2, 5, 8].map((x) => (
+          <mesh key={x} position={[x, 0.16, 0]}>
+            <boxGeometry args={[0.12, 0.09, 1.7]} />
+            <meshStandardMaterial color="#5d4530" roughness={0.8} />
+          </mesh>
+        ))}
+      </group>
+
+      {ROCK_SCATTER.map(([x, z, size], index) => (
+        <mesh key={index} position={[x, size * 0.32, z]} rotation={[0.15 * index, index * 0.61, 0]} castShadow receiveShadow>
+          <dodecahedronGeometry args={[size, 0]} />
+          <meshStandardMaterial color={index % 2 ? '#5a412e' : '#3c302a'} roughness={0.96} flatShading />
         </mesh>
       ))}
     </group>
@@ -337,10 +598,12 @@ export function Compound({
       />
 
       <Ground />
-      <Water
+      <WorldSetDressing preset={preset} />
+      <Sea
         color={preset === 'night' ? '#16334a' : '#286b7f'}
         glint={preset === 'night' ? '#9fc4e8' : '#ffd194'}
       />
+      <OilSlicks />
 
       {byFamily.oil.map((n, i) => (
         <group key={n.id} position={nodePosition(i, 'oil', Number(n.id) || i)}>
