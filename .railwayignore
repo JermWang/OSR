@@ -1,0 +1,31 @@
+# Keep the deploy snapshot small.
+#
+# Without this file every `railway up` tarballs the whole working directory —
+# node_modules included — which pushed the upload to 203 MB and made each deploy
+# take many minutes. Railway installs dependencies and builds on its own, so
+# shipping local copies is pure upload cost with no effect on the result.
+
+# Dependencies — reinstalled on the build server
+node_modules/
+
+# Build output — regenerated on the build server
+.next/
+.next-local-preview/
+out/
+*.tsbuildinfo
+
+# Local-only state
+.env.local
+.env*.local
+*.log
+.codex-*.log
+
+# Version control and editor noise
+.git/
+.vscode/
+.idea/
+.DS_Store
+
+# Source assets that are not served at runtime. The Blender/design working
+# files are large and only used to author what already lives in public/.
+design_polish/
