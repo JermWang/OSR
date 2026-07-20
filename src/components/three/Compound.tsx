@@ -372,343 +372,138 @@ function OilSlicks() {
     </group>
   );
 }
+/**
+ * Every position a rig can ever occupy, derived from nodePosition() rather than
+ * written out — so the keep-out zones cannot drift away from where rigs are
+ * actually placed. Capacity tops out at 8 oil rigs and 12 shafts at compound
+ * L10, so 12 indices per family covers a fully maxed compound.
+ */
+const PAD_SITES: Array<readonly [number, number]> = (() => {
+  const sites: Array<readonly [number, number]> = [];
+  for (let i = 0; i < 12; i += 1) {
+    for (const family of ['oil', 'mine'] as const) {
+      const [x, , z] = nodePosition(i, family, 0);
+      sites.push([x, z] as const);
+    }
+  }
+  return sites;
+})();
 
 /**
- * Distant ranges across the water — the island's horizon. Grouped into massifs
- * of overlapping peaks (never a row of lone cones) and pushed far enough out
- * that the scene fog reduces them to layered silhouettes, which is what sells
- * the depth. [x, z, radius, height] per peak.
+ * Clearance kept around every pad. Rigs render at targetSize 9 and draw a
+ * ground ring of radius 6.7, so this leaves the ring clear with margin for the
+ * per-node z jitter — nothing scatters into a rig's footprint.
  */
-const RANGES: ReadonlyArray<readonly (readonly [number, number, number, number])[]> = [
-  // North massif — the big backdrop behind the compound.
-  [[-46, -128, 34, 26], [-18, -138, 42, 32], [8, -126, 30, 22], [30, -140, 38, 27], [55, -128, 26, 18]],
-  // East range, lower and farther between the peaks.
-  [[118, -48, 30, 20], [132, -14, 38, 26], [122, 22, 26, 16]],
-  // Western mesas — two flat-topped forms so the skyline is not all triangles.
-  [[-122, -30, 26, 14], [-136, 8, 34, 18]],
-] as const;
+const PAD_CLEARANCE = 10;
 
-/** Soft sand dunes inside the coast, keeping the island edge from being flat. */
-const DUNES = [
-  [-38, -34, 9, 1.9], [-24, -40, 12, 2.4], [6, -40, 10, 2.0], [26, -36, 8, 1.6],
-  [36, -18, 9, 1.8], [38, 8, 7, 1.4], [30, 24, 10, 2.0], [-40, 20, 8, 1.6],
-  [-44, -6, 7, 1.3], [8, 27, 9, 1.6],
-] as const;
-
-const ROCK_SCATTER = [
-  [-34, -24, 1.1], [-28, 15, 0.75], [-20, 21, 0.95], [-10, -25, 0.65], [-6, 15, 1.2],
-  [4, -22, 0.82], [14, 19, 0.62], [24, -21, 1.1], [29, 8, 0.72], [36, -12, 0.9],
-  [-41, 24, 1.3], [40, 18, 1.15], [-44, -14, 0.85], [18, 26, 0.7],
-] as const;
-
-/** Dry desert brush — squashed low-poly tufts, the only "vegetation" out here. */
-const BRUSH_SCATTER = [
-  [-31, -28, 0.55], [-16, 22, 0.4], [-42, 12, 0.6], [-8, -27, 0.45], [10, 24, 0.5],
-  [27, -26, 0.42], [38, 2, 0.55], [33, 15, 0.38], [-45, -20, 0.5], [20, 22, 0.44],
-] as const;
-
-function Pipe({ position, length, axis = 'x' }: { position: [number, number, number]; length: number; axis?: 'x' | 'z' }) {
-  return (
-    <mesh position={position} rotation={axis === 'x' ? [0, 0, Math.PI / 2] : [Math.PI / 2, 0, 0]} castShadow receiveShadow>
-      <cylinderGeometry args={[0.22, 0.22, length, 10]} />
-      <meshStandardMaterial color="#44362b" metalness={0.8} roughness={0.34} />
-    </mesh>
-  );
-}
-
-function Tank({ position, radius, height }: { position: [number, number, number]; radius: number; height: number }) {
-  return (
-    <group position={position}>
-      <mesh position={[0, height * 0.5, 0]} castShadow receiveShadow>
-        <cylinderGeometry args={[radius, radius, height, 16]} />
-        <meshStandardMaterial color="#393334" metalness={0.75} roughness={0.44} />
-      </mesh>
-      <mesh position={[0, height + 0.1, 0]} castShadow>
-        <cylinderGeometry args={[radius * 0.92, radius, 0.24, 16]} />
-        <meshStandardMaterial color="#5b4735" metalness={0.7} roughness={0.34} />
-      </mesh>
-      <mesh position={[0, height * 0.7, 0]}>
-        <torusGeometry args={[radius * 1.01, 0.07, 6, 16]} />
-        <meshStandardMaterial color="#a56c2a" metalness={0.8} roughness={0.3} />
-      </mesh>
-    </group>
-  );
+/**
+ * Signed distance to the coastline, mirroring the SDF the sea shader uses so
+ * land here means exactly what land means there. Negative inland.
+ */
+function coastSdf(x: number, z: number): number {
+  const dx = Math.abs(x - -3) - 38;
+  const dz = Math.abs(z - -8) - 32;
+  const outside = Math.hypot(Math.max(dx, 0), Math.max(dz, 0));
+  return outside + Math.min(Math.max(dx, dz), 0) - 14;
 }
 
 /**
- * A pole line WITH its wires. Poles without wires read as fence posts; the sag
- * between crossarms is what makes a power line a power line. Wires are thin
- * quadratic-bezier tubes drooping between consecutive crossarm tips.
+ * Rocks scattered procedurally across the island.
+ *
+ * Jittered grid rather than pure random, so they spread evenly without the
+ * clumps and bald patches uniform sampling produces. Candidates are rejected
+ * when they fall inside a pad's clearance, too near the waterline, or on the
+ * road-width centre strip between the pad rows that the player's camera flies
+ * through. Deterministic: the seeded RNG keeps the layout identical across
+ * renders and reloads instead of reshuffling every mount.
  */
-function PoleLine({ x, zs }: { x: number; zs: readonly number[] }) {
-  const wires = useMemo(() => {
-    const geoms: THREE.TubeGeometry[] = [];
-    for (let i = 0; i < zs.length - 1; i += 1) {
-      for (const arm of [-0.85, 0.85]) {
-        const a = new THREE.Vector3(x + arm, 4.62, zs[i]);
-        const b = new THREE.Vector3(x + arm, 4.62, zs[i + 1]);
-        const mid = a.clone().lerp(b, 0.5);
-        mid.y -= 0.55; // catenary sag
-        const curve = new THREE.QuadraticBezierCurve3(a, mid, b);
-        geoms.push(new THREE.TubeGeometry(curve, 14, 0.022, 4, false));
+const ROCKS: Array<{ x: number; z: number; size: number; rot: number; squash: number; tone: number }> =
+  (() => {
+    let s = 0x2f6e2b1 >>> 0;
+    const rnd = () => {
+      s = (s + 0x6d2b79f5) >>> 0;
+      let t = Math.imul(s ^ (s >>> 15), 1 | s);
+      t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+      return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    };
+
+    const rocks: Array<{ x: number; z: number; size: number; rot: number; squash: number; tone: number }> = [];
+    const step = 7;
+    for (let gx = -54; gx <= 48; gx += step) {
+      for (let gz = -52; gz <= 36; gz += step) {
+        if (rnd() < 0.45) continue; // thin the field out; a rock per cell is too dense
+        const x = gx + (rnd() - 0.5) * step * 0.9;
+        const z = gz + (rnd() - 0.5) * step * 0.9;
+
+        // Keep the shoreline clear so rocks never float in surf.
+        if (coastSdf(x, z) > -5) continue;
+        // Never inside a rig footprint, whatever the player builds.
+        if (PAD_SITES.some(([px, pz]) => Math.hypot(x - px, z - pz) < PAD_CLEARANCE)) continue;
+        // Leave the central corridor between the two pad rows walkable.
+        if (Math.abs(x - -2) < 5) continue;
+
+        rocks.push({
+          x,
+          z,
+          size: 0.55 + rnd() * 1.15,
+          rot: rnd() * Math.PI * 2,
+          squash: 0.5 + rnd() * 0.45,
+          tone: rnd(),
+        });
       }
     }
-    return geoms;
-  }, [x, zs]);
-  return (
-    <group>
-      {zs.map((z) => (
-        <group key={z} position={[x, 0, z]}>
-          <mesh position={[0, 2.6, 0]} castShadow>
-            <cylinderGeometry args={[0.1, 0.16, 5.2, 8]} />
-            <meshStandardMaterial color="#3b3129" roughness={0.9} />
-          </mesh>
-          {/* crossarm perpendicular to the run so the wires pass along it */}
-          <mesh position={[0, 4.68, 0]} castShadow>
-            <boxGeometry args={[2.0, 0.11, 0.11]} />
-            <meshStandardMaterial color="#4a3b2c" roughness={0.8} />
-          </mesh>
-          {[-0.85, 0.85].map((ax) => (
-            <mesh key={ax} position={[ax, 4.58, 0]}>
-              <sphereGeometry args={[0.07, 6, 5]} />
-              <meshStandardMaterial color="#b7c0c4" metalness={0.4} roughness={0.4} />
-            </mesh>
-          ))}
-        </group>
-      ))}
-      {wires.map((geom, i) => (
-        <mesh key={i} geometry={geom}>
-          <meshStandardMaterial color="#1c1a18" roughness={0.7} />
-        </mesh>
-      ))}
-    </group>
-  );
-}
+    return rocks;
+  })();
 
 /**
- * A dirt track with wheel ruts: a bed of disturbed sand plus two darker
- * parallel strips where tyres run. Ruts are what make it read as a road driven
- * on daily rather than a painted stripe.
+ * Everything on the island that is not a rig: rocks, and nothing else.
+ *
+ * Earlier passes added a tank farm, flare stack, pipe runs, power lines, roads,
+ * dunes and a distant mountain range. They read as clutter rather than
+ * environment and fought the rigs for attention, so the ground is bare stone
+ * and sand — the rigs are the subject.
  */
-function DirtRoad({
-  position,
-  length,
-  width = 3.4,
-  axis = 'z',
-}: {
-  position: [number, number, number];
-  length: number;
-  width?: number;
-  axis?: 'x' | 'z';
-}) {
-  const rot: [number, number, number] = axis === 'z' ? [-Math.PI / 2, 0, 0] : [-Math.PI / 2, 0, Math.PI / 2];
-  const rutOffset = width * 0.22;
-  return (
-    <group position={position}>
-      <mesh rotation={rot} receiveShadow>
-        <planeGeometry args={[width, length]} />
-        <meshStandardMaterial color="#6b5138" roughness={0.98} />
-      </mesh>
-      {[-rutOffset, rutOffset].map((o) => (
-        <mesh
-          key={o}
-          position={axis === 'z' ? [o, 0.006, 0] : [0, 0.006, o]}
-          rotation={rot}
-        >
-          <planeGeometry args={[0.5, length]} />
-          <meshStandardMaterial color="#4e3a27" roughness={1} />
-        </mesh>
-      ))}
-    </group>
-  );
-}
-
-/** Gathering pipeline: a long line on regular support saddles, with end risers. */
-function PipeRun({ from, to, y = 0.9 }: { from: [number, number]; to: [number, number]; y?: number }) {
-  const dx = to[0] - from[0];
-  const dz = to[1] - from[1];
-  const length = Math.hypot(dx, dz);
-  const angle = Math.atan2(dz, dx);
-  const mid: [number, number] = [(from[0] + to[0]) / 2, (from[1] + to[1]) / 2];
-  const supports = Math.max(2, Math.floor(length / 4));
-  return (
-    <group position={[mid[0], 0, mid[1]]} rotation={[0, -angle, 0]}>
-      <mesh position={[0, y, 0]} rotation={[0, 0, Math.PI / 2]} castShadow>
-        <cylinderGeometry args={[0.24, 0.24, length, 10]} />
-        <meshStandardMaterial color="#4c3d2e" metalness={0.75} roughness={0.4} />
-      </mesh>
-      {Array.from({ length: supports }, (_, i) => {
-        const t = supports === 1 ? 0 : i / (supports - 1);
-        const sx = (t - 0.5) * (length - 1.2);
-        return (
-          <group key={i} position={[sx, 0, 0]}>
-            <mesh position={[0, y * 0.5 - 0.05, 0]} castShadow>
-              <boxGeometry args={[0.3, y - 0.1, 0.3]} />
-              <meshStandardMaterial color="#3a322b" roughness={0.85} />
-            </mesh>
-            <mesh position={[0, y - 0.12, 0]}>
-              <boxGeometry args={[0.44, 0.14, 0.5]} />
-              <meshStandardMaterial color="#2c2622" metalness={0.6} roughness={0.5} />
-            </mesh>
-          </group>
-        );
-      })}
-      {/* end risers dropping into the ground at both ends */}
-      {[-1, 1].map((end) => (
-        <mesh key={end} position={[end * (length / 2 - 0.1), y * 0.5, 0]} castShadow>
-          <cylinderGeometry args={[0.2, 0.2, y, 8]} />
-          <meshStandardMaterial color="#4c3d2e" metalness={0.75} roughness={0.4} />
-        </mesh>
-      ))}
-    </group>
-  );
-}
-
-function FlareStack({ position }: { position: [number, number, number] }) {
-  return (
-    <group position={position}>
-      <mesh position={[0, 3.4, 0]} castShadow>
-        <cylinderGeometry args={[0.28, 0.42, 6.8, 10]} />
-        <meshStandardMaterial color="#312c2c" metalness={0.82} roughness={0.34} />
-      </mesh>
-      <mesh position={[0, 6.9, 0]} castShadow>
-        <cylinderGeometry args={[0.55, 0.28, 0.35, 10]} />
-        <meshStandardMaterial color="#b66f27" metalness={0.6} roughness={0.28} />
-      </mesh>
-      <pointLight position={[0, 7.25, 0]} color="#ff9d42" intensity={1.5} distance={12} decay={2} />
-      <mesh position={[0, 7.3, 0]}>
-        <sphereGeometry args={[0.3, 10, 8]} />
-        <meshStandardMaterial color="#ff9d42" emissive="#ff6500" emissiveIntensity={3.5} />
-      </mesh>
-    </group>
-  );
-}
-
 function WorldSetDressing({ preset }: { preset: LightingPreset }) {
   const night = preset === 'night';
-  // Farther massifs are lighter (atmospheric perspective); fog does the rest.
-  const rangeNear = night ? '#101724' : preset === 'neutral' ? '#3e4a58' : '#402a2c';
-  const rangeFar = night ? '#131c2c' : preset === 'neutral' ? '#4c5866' : '#4e3438';
-  const duneColor = night ? '#241d15' : '#8a6a45';
+  const tones = night
+    ? ['#2a2118', '#231d17', '#1d1913']
+    : ['#5a412e', '#4a3a2c', '#3c302a'];
 
   return (
     <group>
-      {/* Horizon: massifs rising from the sea beyond the coast, never a row of
-          lone cones. Each massif overlaps 2-5 peaks; the western pair are
-          flat-topped mesas so the whole skyline is not triangles. */}
-      {RANGES.map((massif, m) => (
-        <group key={m} position={[0, -0.6, 0]}>
-          {massif.map(([x, z, radius, height], i) => {
-            const mesa = m === 2;
-            return (
-              <mesh key={i} position={[x, height * (mesa ? 0.5 : 0.42), z]} rotation={[0, i * 0.9 + m, 0]}>
-                {mesa ? (
-                  <cylinderGeometry args={[radius * 0.55, radius, height, 9]} />
-                ) : (
-                  <coneGeometry args={[radius, height, 8]} />
-                )}
-                <meshStandardMaterial color={m === 0 ? rangeNear : rangeFar} roughness={1} flatShading fog />
-              </mesh>
-            );
-          })}
-        </group>
-      ))}
-
-      {/* Island-edge dunes: smooth low mounds (deliberately NOT flat-shaded) so
-          the ground swells before it meets the surf. */}
-      {DUNES.map(([x, z, r, h], i) => (
-        <mesh key={i} position={[x, -0.35, z]} scale={[1, h / r, 0.72]} rotation={[0, i * 1.3, 0]} receiveShadow>
-          <sphereGeometry args={[r, 18, 12, 0, Math.PI * 2, 0, Math.PI / 2]} />
-          <meshStandardMaterial color={duneColor} roughness={1} />
-        </mesh>
-      ))}
-
-      {/* Haul road: north-south through the corridor between the oil and mine
-          pad rows, with a spur west to the tank farm through the row gap. */}
-      <DirtRoad position={[-2, 0.008, -6]} length={68} axis="z" />
-      <DirtRoad position={[-20.5, 0.01, 6]} length={31} width={2.4} axis="x" />
-
-      {/* Tank farm on a concrete pad inside a containment berm — where the
-          gathering line ends up. */}
-      <group position={[-38, 0, 6]}>
-        <mesh position={[0, 0.06, 0]} receiveShadow>
-          <cylinderGeometry args={[7.6, 7.6, 0.12, 24]} />
-          <meshStandardMaterial color="#55504a" roughness={0.9} />
-        </mesh>
-        <mesh position={[0, 0.22, 0]} scale={[1, 0.42, 1]}>
-          <torusGeometry args={[7.9, 0.55, 8, 28]} />
-          <meshStandardMaterial color="#6d5438" roughness={1} />
-        </mesh>
-        <Tank position={[-2.2, 0.12, -1.8]} radius={2.3} height={4.4} />
-        <Tank position={[2.8, 0.12, 1.6]} radius={1.7} height={3.1} />
-        <Tank position={[2.4, 0.12, -2.6]} radius={1.15} height={2.3} />
-        <FlareStack position={[-4.6, 0.12, 3.4]} />
-        {/* farm manifold linking the tanks */}
-        <Pipe position={[0.4, 0.5, -0.4]} length={5.6} />
-        <Pipe position={[2.6, 0.5, -0.6]} length={3.6} axis="z" />
-      </group>
-
-      {/* Gathering line from the western pad row into the farm. */}
-      <PipeRun from={[-30, -6]} to={[-33.5, 4]} />
-
-      {/* Power line following the haul road. */}
-      <PoleLine x={1.4} zs={[-38, -26, -14, -2, 10, 22]} />
-
-      {/* Mine-side laydown yard: crate stack + cable spools where the rail
-          strip used to float. */}
-      <group position={[27, 0, 2]}>
-        {([[0, 0, 0.9], [1.7, 0.2, 0.7], [0.7, 0.9, 0.75]] as const).map(([x, z, s], i) => (
-          <mesh key={i} position={[x, s * 0.5, z]} rotation={[0, i * 0.5, 0]} castShadow receiveShadow>
-            <boxGeometry args={[s * 1.5, s, s * 1.5]} />
-            <meshStandardMaterial color={i === 1 ? '#4c3b28' : '#5d4a32'} roughness={0.9} />
-          </mesh>
-        ))}
-        {([[-2.4, 1.4], [-2.1, -0.9]] as const).map(([x, z], i) => (
-          <mesh key={i} position={[x, 0.55, z]} rotation={[0, 0, Math.PI / 2]} castShadow>
-            <cylinderGeometry args={[0.55, 0.55, 0.5, 12]} />
-            <meshStandardMaterial color="#6b4326" roughness={0.8} />
-          </mesh>
-        ))}
-      </group>
-
-      {/* Rocks: non-uniform scales and three tones so no two read identical,
-          with pebbles at the base of the larger ones. */}
-      {ROCK_SCATTER.map(([x, z, size], index) => (
-        <group key={index} position={[x, 0, z]}>
+      {ROCKS.map((rock, i) => (
+        <group key={i} position={[rock.x, 0, rock.z]}>
           <mesh
-            position={[0, size * 0.3, 0]}
-            scale={[1, 0.62 + (index % 3) * 0.16, 0.82 + (index % 2) * 0.2]}
-            rotation={[0.15 * index, index * 0.61, 0.08 * index]}
+            position={[0, rock.size * 0.28, 0]}
+            scale={[1, rock.squash, 0.82 + (i % 3) * 0.12]}
+            rotation={[0.12 * (i % 5), rock.rot, 0.07 * (i % 3)]}
             castShadow
             receiveShadow
           >
-            <dodecahedronGeometry args={[size, 0]} />
+            <dodecahedronGeometry args={[rock.size, 0]} />
             <meshStandardMaterial
-              color={index % 3 === 0 ? '#5a412e' : index % 3 === 1 ? '#4a3a2c' : '#3c302a'}
+              color={tones[Math.floor(rock.tone * tones.length) % tones.length]}
               roughness={0.96}
               flatShading
             />
           </mesh>
-          {size > 0.9 && (
-            <mesh position={[size * 0.9, 0.1, size * 0.4]} rotation={[0, index, 0]} receiveShadow>
-              <dodecahedronGeometry args={[size * 0.28, 0]} />
-              <meshStandardMaterial color="#4a3a2c" roughness={1} flatShading />
+          {/* A pebble at the foot of the larger stones so they sit in the sand
+              rather than looking dropped onto it. */}
+          {rock.size > 1.1 && (
+            <mesh
+              position={[rock.size * 0.85, rock.size * 0.09, rock.size * 0.35]}
+              rotation={[0, rock.rot * 1.7, 0]}
+              receiveShadow
+            >
+              <dodecahedronGeometry args={[rock.size * 0.26, 0]} />
+              <meshStandardMaterial color={tones[2]} roughness={1} flatShading />
             </mesh>
           )}
         </group>
       ))}
-
-      {/* Dry brush — sparse, squashed, olive-dead. The only vegetation. */}
-      {BRUSH_SCATTER.map(([x, z, s], i) => (
-        <mesh key={i} position={[x, s * 0.4, z]} scale={[1, 0.68, 1]} rotation={[0, i * 2.1, 0]} castShadow>
-          <icosahedronGeometry args={[s, 0]} />
-          <meshStandardMaterial color={i % 2 ? '#5d5433' : '#4f4a30'} roughness={1} flatShading />
-        </mesh>
-      ))}
     </group>
   );
 }
-
 /**
  * One copy of the delivered square OSR_sand.glb terrain, uniformly enlarged
  * to cover the entire compound while preserving its exact 1:1 proportions.
