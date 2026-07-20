@@ -10,7 +10,8 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
-    "test:rpc": "node scripts/check-robinhood-rpc.mjs"
+    "test:rpc": "node scripts/check-robinhood-rpc.mjs",
+    "dev:preview": "next dev"
   },
   "dependencies": {
     "@phosphor-icons/react": "^2.1.10",

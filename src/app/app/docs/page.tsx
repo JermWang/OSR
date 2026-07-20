@@ -33,6 +33,7 @@ import {
 } from '@/lib/rarity';
 
 const CONTENTS: Array<{ href: string; label: string }> = [
+  { href: '#trailer', label: 'Watch the trailer' },
   { href: '#overview', label: '1. What is OSR?' },
   { href: '#quickstart', label: '2. Quick start' },
   { href: '#nodes', label: '3. Nodes: Rigs vs Shafts' },
@@ -171,6 +172,34 @@ export default function DocsPage() {
             ))}
           </ul>
         </nav>
+
+        {/* Trailer */}
+        <section id="trailer" className="scroll-mt-20 space-y-3">
+          <h2 className="font-mono text-xs font-bold uppercase tracking-widest text-amber-500">
+            Watch the trailer
+          </h2>
+          <div className="panel overflow-hidden p-0">
+            {/*
+              preload="none" is deliberate: the file is ~35MB, and every visitor
+              to the guide would otherwise pay for it before reading a word. The
+              poster stands in until someone actually presses play.
+            */}
+            <video
+              controls
+              preload="none"
+              playsInline
+              poster="/media/osr-trailer-poster.webp"
+              className="aspect-video w-full bg-ink-950 object-contain"
+            >
+              <source src="/media/osr-trailer.mp4" type="video/mp4" />
+              Your browser cannot play this video.
+            </video>
+          </div>
+          <p className="text-sm leading-relaxed text-steel-400">
+            A ninety-second run through the whole loop — deploying a rig, opening a crate, equipping
+            components, and claiming. Everything below is the same thing in writing.
+          </p>
+        </section>
 
         {/* 1. What is OSR? */}
         <Section id="overview" title="1. What is OSR?">
