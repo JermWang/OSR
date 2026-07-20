@@ -68,7 +68,7 @@ export async function POST(request: Request) {
         toSeller,
         listing.seller
       );
-      return NextResponse.json({ settled: true, listing: sold, paid: listing.price_osr, fee });
+      return NextResponse.json({ settled: true, result: { listing: sold, paid: listing.price_osr, fee } });
     }
 
     const nonce = typeof body.nonce === 'string' ? body.nonce : null;
@@ -93,13 +93,15 @@ export async function POST(request: Request) {
       }
       return NextResponse.json({
         settled: true,
-        listing: sold,
-        fee,
-        toSeller,
-        payoutHash,
-        // Surfaced so the buyer is not told the sale is clean when the seller
-        // has not actually been paid yet.
-        sellerPaid: payoutHash != null,
+        result: {
+          listing: sold,
+          fee,
+          toSeller,
+          payoutHash,
+          // Surfaced so the buyer is not told the sale is clean when the
+          // seller has not actually been paid yet.
+          sellerPaid: payoutHash != null,
+        },
       });
     }
     if (nonce || txHash) throw new GameError('both nonce and txHash are required to settle', 400);

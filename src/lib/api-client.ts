@@ -35,8 +35,7 @@ export interface CompoundInfo {
   maxNodes: number;
   shaftBonusSlots: number;
   cratesPerDay: number;
-  /** Null when no trusted OSR price exists, so crates cannot be priced. */
-  crateCost: number | null;
+  crateCost: number;
   cooldownRemainingMs: number;
   nextUpgradeCost: null | {
     targetLevel: number;
@@ -102,6 +101,36 @@ export interface ProtocolOverview {
     nextRatePerSec: number;
     cycleProgress: number;
   };
+}
+
+
+export type MarketItemKind = 'crate' | 'component' | 'node';
+
+export interface MarketListing {
+  id: number;
+  seller: string;
+  itemKind: MarketItemKind;
+  itemId: number;
+  priceOsr: number;
+  createdAt: number;
+  item: Record<string, unknown> | null;
+}
+
+export interface MarketSale {
+  item_kind: MarketItemKind;
+  item_id: number;
+  sold_price_osr: number;
+  sold_at: number;
+  fee_osr: number;
+}
+
+export interface MarketPurchase {
+  listing: MarketListing;
+  fee: number;
+  toSeller?: number;
+  payoutHash?: string | null;
+  /** False when the item moved but the seller's payout has not gone through. */
+  sellerPaid?: boolean;
 }
 
 export interface CrateResult {
@@ -346,6 +375,27 @@ export const api = {
     });
     return { ...res.result, txHash: res.txHash, gasOsr: res.gasOsr ?? 0 };
   },
+
+
+  // ---- Marketplace ----------------------------------------------------------
+  /** Open listings and recent sales. Public — no wallet needed to browse. */
+  marketListings: (kind?: MarketItemKind) =>
+    request<{ listings: MarketListing[]; sales: MarketSale[]; feeBps: number }>(
+      kind ? `/market/listings?kind=${kind}` : '/market/listings'
+    ),
+
+  marketList: (wallet: string, itemKind: MarketItemKind, itemId: number, priceOsr: number) =>
+    post<{ listing: MarketListing }>('/market/list', { wallet, itemKind, itemId, priceOsr }),
+
+  marketCancel: (wallet: string, listingId: number) =>
+    post<{ ok: true }>('/market/cancel', { wallet, listingId }),
+
+  /** Buys a listing, settling on-chain when the token is live. */
+  marketBuy: (wallet: string, listingId: number, onStep?: StepHandler) =>
+    runAction<MarketPurchase>('/market/buy', wallet, { listingId }, onStep),
+
+  /** Acknowledge mined-crate notices so they stop being shown. */
+  markCratesSeen: (wallet: string) => post<{ ok: true }>('/crates/seen', { wallet }),
 
   /** Opens a crate the wallet has already mined. Crates cannot be bought. */
   openCrate: (

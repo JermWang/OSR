@@ -15,7 +15,7 @@ import {
 import { useWalletStore } from '@/lib/store';
 import { COMPONENT_RARITIES, NODE_SLOTS, SLOT_LABELS, rarityHex, type Rarity } from '@/lib/rarity';
 import { auraHex, auraLabel } from '@/lib/aura';
-import { RARITY_MULT, CRATE_OPEN_USD, WELCOME_BOOST_WINDOW_S } from '@/lib/economy';
+import { RARITY_MULT, WELCOME_BOOST_WINDOW_S } from '@/lib/economy';
 import { SHOWROOM_NODES, type LightingPreset } from '@/components/three/Compound';
 import type { RigNodeData } from '@/components/three/NodeRig';
 import { CHAIN, TOKEN_LIVE } from '@/lib/config';
@@ -30,6 +30,7 @@ const SETTLEMENT_STEP_LABEL: Record<SettlementStep, string> = {
 
 const Scene = dynamic(() => import('@/components/three/Scene'), { ssr: false });
 const CrateCinematic = dynamic(() => import('@/components/three/CrateCinematic'), { ssr: false });
+const CrateThumb = dynamic(() => import('@/components/three/CrateThumb'), { ssr: false });
 
 const SLOT_GLYPH: Record<string, string> = {
   derrick: '⛰',
@@ -89,6 +90,7 @@ export default function CommandPage() {
   const totalCapacity = oilCapacity + mineCapacity;
   const capacityFull = oilCount >= oilCapacity && mineCount >= mineCapacity;
   const selected = nodes.find((n) => n.id === selectedNodeId) ?? null;
+  const unseen = op?.unseenCrates ?? [];
   const sceneNodes = useMemo(() => {
     const visible: RigNodeData[] = nodes.map((node) => ({
       id: node.id,
@@ -214,6 +216,33 @@ export default function CommandPage() {
             Pre-token phase on {CHAIN.name}. Your compound is fully playable and OSR balances are
             tracked by the protocol; they settle on-chain once the OSR token goes live.
           </div>
+        )}
+
+        {/* Mined-crate notice. Crates arrive on their own while the operator is
+            playing, so a find has to announce itself — otherwise it silently
+            appears in a modal nobody has open. Dismissing acknowledges it
+            server-side, so it does not reappear on the next device. */}
+        {unseen.length > 0 && (
+          <button
+            onClick={() => {
+              setCrateOpen(true);
+              void api.markCratesSeen(wallet!).then(refresh).catch(() => {});
+            }}
+            className="group flex items-center gap-2.5 rounded border border-amber-500/60 bg-amber-500/10 px-3 py-2.5 text-left transition hover:border-amber-400 hover:bg-amber-500/15"
+          >
+            <CrateThumb size={38} rarity="legendary" />
+            <div className="min-w-0">
+              <div className="font-mono text-[11px] font-bold uppercase tracking-widest text-amber-300">
+                {unseen.length === 1 ? 'Crate mined' : `${unseen.length} crates mined`}
+              </div>
+              <div className="text-[11px] leading-snug text-amber-200/80">
+                Your rigs turned {unseen.length === 1 ? 'one' : 'some'} up — tap to open
+              </div>
+            </div>
+            <span className="ml-auto shrink-0 font-mono text-lg text-amber-400 transition group-hover:translate-x-0.5">
+              →
+            </span>
+          </button>
         )}
 
         {error && (
@@ -858,7 +887,7 @@ function CratePicker({
   useEffect(() => {
     if (wallet) api.crateOdds(wallet).then(setOdds).catch(() => setOdds(null));
   }, [wallet]);
-  const cost = op?.compound.crateCost ?? null;
+  const cost = op?.compound.crateCost ?? 0;
   const crates = op?.crates ?? [];
   return (
     <Modal onClose={onClose} title="Supply Crates">
@@ -906,8 +935,7 @@ function CratePicker({
                   : 'border-steel-500/40 bg-steel-500/5'
               }`}
             >
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src="/mining shaft crate.png" alt="" className="h-11 w-11 rounded object-cover" />
+              <CrateThumb size={44} rarity={crate.crateType === 'rig_crate' ? 'legendary' : 'epic'} />
               <div className="min-w-0">
                 <div className="text-xs font-semibold text-white">
                   {crate.crateType === 'rig_crate' ? 'Rig Crate' : 'Shaft Crate'}
@@ -918,58 +946,19 @@ function CratePicker({
               </div>
               <button
                 className="btn-primary ml-auto shrink-0 !py-1.5 text-xs"
-                disabled={busy === 'crate' || cost == null}
+                disabled={busy === 'crate'}
                 onClick={() => onOpen(crate.id)}
               >
-                {cost == null ? 'Pricing unavailable' : `Open · ${cost.toLocaleString()} OSR`}
+                Open · {cost.toLocaleString()} OSR
               </button>
             </div>
           ))}
         </div>
       )}
-      {cost == null && crates.length > 0 && (
-        <p className="mt-2 text-[10px] leading-relaxed text-amber-300/80">
-          Crates are priced at ${CRATE_OPEN_USD} of OSR, which needs a current token price. Opening
-          is paused until the price feed is refreshed rather than charging a guessed rate.
-        </p>
-      )}
     </Modal>
   );
 }
 
-function CrateCard({
-  tone,
-  title,
-  remaining,
-  perDay,
-  cost,
-  disabled,
-  onOpen,
-}: {
-  tone: 'amber' | 'steel';
-  title: string;
-  remaining: number;
-  perDay: number;
-  cost: number;
-  disabled: boolean;
-  onOpen: () => void;
-}) {
-  return (
-    <div
-      className={`rounded border p-3 ${tone === 'amber' ? 'border-amber-500/40 bg-amber-500/5' : 'border-steel-500/40 bg-steel-500/5'}`}
-    >
-      {/* eslint-disable-next-line @next/next/no-img-element */}
-      <img src="/mining shaft crate.png" alt="" className="h-14 w-14 rounded object-cover" />
-      <div className="mt-1 font-semibold text-white">{title}</div>
-      <div className="text-[11px] text-steel-400">
-        {remaining}/{perDay} remaining today
-      </div>
-      <button className="btn-primary mt-2 w-full text-sm" disabled={disabled} onClick={onOpen}>
-        Open · {cost.toLocaleString()} OSR
-      </button>
-    </div>
-  );
-}
 
 function Modal({ title, children, onClose }: { title: string; children: React.ReactNode; onClose: () => void }) {
   return (

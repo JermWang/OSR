@@ -482,16 +482,7 @@ export function openCrate(
   }
   const crateType = crateRow.crate_type;
 
-  // Priced in dollars, so the cost has to be resolved from a live token price.
-  // With no trusted price the protocol refuses rather than guessing — charging
-  // a made-up rate is worse than making the operator wait.
   const cost = crateCostOsr(getOsrUsdPrice().usdPerOsr);
-  if (cost == null) {
-    throw new GameError(
-      'crate pricing is unavailable right now — the OSR price feed needs updating before crates can be opened',
-      503
-    );
-  }
   const debit = offChainDebit(user, cost, opts, (have) =>
     `Not enough OSR for crate: need ${cost.toLocaleString()} OSR (you have ${have}). Claim rewards or earn more OSR first.`
   );

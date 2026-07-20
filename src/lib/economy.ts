@@ -75,25 +75,32 @@ export function getShaftBonusSlots(level: number): number {
   return 0;
 }
 
-/**
- * What it costs, in US dollars, to open a mined crate.
- *
- * Priced in dollars rather than OSR because a flat OSR price drifts with the
- * token: 500 OSR was $0.50 at a $1M cap and $25 at a $50M cap. Pegging the
- * dollar value keeps a crate feeling the same regardless of where OSR trades.
- */
-export const CRATE_OPEN_USD = Number(process.env.NEXT_PUBLIC_OSR_CRATE_USD ?? 5);
+/** Flat OSR cost to open a mined crate. */
+export const CRATE_OPEN_OSR = Number(process.env.NEXT_PUBLIC_OSR_CRATE_OSR ?? 10_000);
 
 /**
- * Convert the dollar price into OSR at a given token price.
+ * Optional dollar peg for crate opening. Zero (the default) means the flat OSR
+ * price above is used.
  *
- * Returns null when no price is known — callers must refuse to charge rather
- * than guess, since a wrong price here either gives crates away or overcharges
- * every operator.
+ * The peg exists because a flat token price drifts with the market — 500 OSR
+ * was $0.50 at a $1M cap and $25 at a $50M cap. It is off for now because
+ * pegging needs a maintained price feed, and a flat figure that always works
+ * beats a pegged one that locks crates whenever the feed goes stale.
  */
-export function crateCostOsr(osrUsdPrice: number | null): number | null {
-  if (!osrUsdPrice || !(osrUsdPrice > 0)) return null;
-  return Math.max(1, Math.round(CRATE_OPEN_USD / osrUsdPrice));
+export const CRATE_OPEN_USD = Number(process.env.NEXT_PUBLIC_OSR_CRATE_USD ?? 0);
+
+/**
+ * What opening a crate costs, in OSR.
+ *
+ * Uses the dollar peg only when one is configured AND a live price is known;
+ * otherwise the flat price. Never returns null, so crates cannot become
+ * unopenable because a price feed lapsed.
+ */
+export function crateCostOsr(osrUsdPrice: number | null): number {
+  if (CRATE_OPEN_USD > 0 && osrUsdPrice && osrUsdPrice > 0) {
+    return Math.max(1, Math.round(CRATE_OPEN_USD / osrUsdPrice));
+  }
+  return CRATE_OPEN_OSR;
 }
 
 /**

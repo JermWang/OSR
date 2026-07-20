@@ -39,24 +39,12 @@ export async function POST(request: Request) {
         targetNodeId: targetNodeId > 0 ? targetNodeId : null,
       };
     },
-    price: () => {
-      // Crates are priced in dollars, so a quote cannot be produced without a
-      // live token price. Refusing here keeps a mispriced quote from ever being
-      // signed — the operator sees why instead of being charged a guess.
-      const osrAmount = crateCostOsr(getOsrUsdPrice().usdPerOsr);
-      if (osrAmount == null) {
-        throw new GameError(
-          'crate pricing is unavailable right now — the OSR price feed needs updating',
-          503
-        );
-      }
-      return {
-        osrAmount,
-        burnBps: SPLIT_BURN_BPS,
-        treasuryBps: TREASURY_BPS,
-        feeEth: CRATE_FEE_ETH,
-      };
-    },
+    price: () => ({
+      osrAmount: crateCostOsr(getOsrUsdPrice().usdPerOsr),
+      burnBps: SPLIT_BURN_BPS,
+      treasuryBps: TREASURY_BPS,
+      feeEth: CRATE_FEE_ETH,
+    }),
     apply: (wallet, p, opts) => openCrate(wallet, p.crateId, p.targetNodeId, opts),
   });
 }

@@ -7,7 +7,7 @@ process.env.OSR_DATA_DIR = mkdtempSync(join(tmpdir(), 'osr-market-'));
 
 const { getDb } = await import('./db');
 const { setOsrUsdPrice } = await import('./price');
-const { crateCostOsr, CRATE_OPEN_USD, CRATES_FOUND_PER_DAY, CRATE_WALLET_DAILY_CAP } =
+const { crateCostOsr, CRATE_OPEN_OSR, CRATES_FOUND_PER_DAY, CRATE_WALLET_DAILY_CAP } =
   await import('./economy');
 const { rollCrateDrops, unopenedCrates, unseenCrates, markCratesSeen, networkCratesRemaining } =
   await import('./crates');
@@ -41,16 +41,14 @@ beforeEach(() => {
 afterAll(() => vi.restoreAllMocks());
 
 describe('crate pricing', () => {
-  it('prices a crate in OSR from the dollar target', () => {
-    expect(crateCostOsr(0.001)).toBe(CRATE_OPEN_USD / 0.001);
-    // A 10x in the token means a crate costs a tenth the OSR — the whole point
-    // of pegging to dollars rather than a flat token amount.
-    expect(crateCostOsr(0.01)).toBe(CRATE_OPEN_USD / 0.01);
+  it('charges the flat OSR price', () => {
+    expect(crateCostOsr(0.001)).toBe(CRATE_OPEN_OSR);
   });
 
-  it('refuses to price without a token price rather than guessing', () => {
-    expect(crateCostOsr(null)).toBeNull();
-    expect(crateCostOsr(0)).toBeNull();
+  it('still prices a crate when no token price is known', () => {
+    // The flat price must never leave crates unopenable because a feed lapsed.
+    expect(crateCostOsr(null)).toBe(CRATE_OPEN_OSR);
+    expect(crateCostOsr(0)).toBe(CRATE_OPEN_OSR);
   });
 });
 
