@@ -183,7 +183,34 @@ export interface ActivityItem {
   createdAt: string;
 }
 
-async function request<T>(path: string, opts?: RequestInit): Promise<T> {
+/**
+ * Read both Privy tokens, optionally waiting for them to appear.
+ *
+ * Privy issues the access and identity tokens asynchronously after sign-in, and
+ * every authenticated route requires BOTH. A page mounting in that gap sends an
+ * unauthenticated request and gets "Privy authentication required" — a hard
+ * error for a session that is perfectly valid and a moment from being ready.
+ *
+ * `waitMs` is only spent on the retry path. Waiting on every call would make
+ * each public read — landing stats, leaderboard, the market board — sit for
+ * seconds waiting on tokens a signed-out visitor is never going to have.
+ */
+async function privyTokens(waitMs = 0): Promise<[string | null, string | null]> {
+  const deadline = Date.now() + waitMs;
+  let access: string | null = null;
+  let identity: string | null = null;
+  for (;;) {
+    try {
+      [access, identity] = await Promise.all([getAccessToken(), getIdentityToken()]);
+    } catch {
+      // Privy not initialised yet; treat as "no tokens" and retry below.
+    }
+    if ((access && identity) || Date.now() >= deadline) return [access, identity];
+    await new Promise((r) => setTimeout(r, 150));
+  }
+}
+
+async function request<T>(path: string, opts?: RequestInit, isRetry = false): Promise<T> {
   const controller = opts?.signal ? null : new AbortController();
   const timeout = controller ? window.setTimeout(() => controller.abort(), 15_000) : null;
   let res: Response;
@@ -191,12 +218,8 @@ async function request<T>(path: string, opts?: RequestInit): Promise<T> {
     let accessToken: string | null = null;
     let identityToken: string | null = null;
     if (PRIVY_CONFIGURED) {
-      try {
-        [accessToken, identityToken] = await Promise.all([getAccessToken(), getIdentityToken()]);
-      } catch {
-        // Public reads remain available before sign-in. Protected endpoints
-        // still reject the request server-side when these headers are absent.
-      }
+      // Fast path reads whatever is there; only the post-401 retry waits.
+      [accessToken, identityToken] = await privyTokens(isRetry ? 2_500 : 0);
     }
     res = await fetch(`/api${path}`, {
       ...opts,
@@ -222,6 +245,14 @@ async function request<T>(path: string, opts?: RequestInit): Promise<T> {
       if (body?.error) msg = body.error;
     } catch {
       /* keep default */
+    }
+    // Privy rotates its tokens, so an authenticated call can land in the gap
+    // while one is reissued. Retry once with freshly-read tokens before
+    // surfacing it: the alternative is telling a signed-in operator their
+    // sign-in failed, on a page that has no retry of its own.
+    if (res.status === 401 && !isRetry && PRIVY_CONFIGURED) {
+      await new Promise((r) => setTimeout(r, 400));
+      return request<T>(path, opts, true);
     }
     throw new Error(msg);
   }

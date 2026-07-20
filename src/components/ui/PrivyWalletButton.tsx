@@ -63,14 +63,17 @@ export default function PrivyWalletButton() {
           `privy:${managedWallet.walletClientType}`
         );
         if (cancelled || !address) return;
+        // Both stores wait for the identity token, not just the operation one.
+        // Privy issues it asynchronously and every authenticated route requires
+        // it, so publishing the wallet earlier makes whichever page is mounted
+        // fire its opening request against a session the server will reject.
+        // The command screen recovered on its next poll; Inventory, Ops and
+        // Profile fetch once on mount and showed "Privy authentication
+        // required" until a manual reload. This effect re-runs when the token
+        // lands, and both setters no-op on an unchanged wallet.
+        if (!identityToken) return;
         setStoreWallet(address);
-        // Only start polling the game API once the identity token exists.
-        // Privy issues it asynchronously, and every authenticated route
-        // requires it — wiring the wallet up first makes the opening request
-        // race the token and 401, which surfaces as a sign-in error banner
-        // that clears itself on the next poll. This effect re-runs when the
-        // token arrives, and setOperationWallet no-ops on an unchanged wallet.
-        if (identityToken) setOperationWallet(address);
+        setOperationWallet(address);
       } catch (error) {
         if (!cancelled) {
           setSyncError(error instanceof Error ? error.message : 'Privy wallet initialization failed');
