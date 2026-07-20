@@ -28,6 +28,7 @@ const {
 } = await import('./game');
 const { SHARE_CAP, STARTER_OSR_GRANT, GENESIS_RATE_PER_SEC } = await import('./economy');
 const { getDb } = await import('./db');
+const { setOsrUsdPrice } = await import('./price');
 
 const wallet = (n: number) => `0x${String(n).padStart(40, '0')}`;
 const fund = (w: string, amount: number) =>
@@ -177,7 +178,13 @@ describe('full game cycle', () => {
     expect(claimed.claims[0].fee).toBeGreaterThan(0);
     expect(claimed.claims[0].net).toBeLessThan(claimed.claims[0].gross);
 
-    const crate = openCrate(w, 'rig_crate', nodeId);
+    // Crates are mined now, so seed one directly rather than buying it.
+    // Crates are dollar-priced, so the engine needs a token price to charge.
+    setOsrUsdPrice(0.001);
+    const crateRow = getDb()
+      .prepare("INSERT INTO crates (wallet, crate_type, found_at) VALUES (?,'rig_crate',?)")
+      .run(w, Date.now());
+    const crate = openCrate(w, Number(crateRow.lastInsertRowid), nodeId);
     expect(crate.inventoryItemId).toBeGreaterThan(0);
     expect(inventory(w).items.length).toBeGreaterThan(0);
 

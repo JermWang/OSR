@@ -4,6 +4,9 @@
 // needed.
 
 import { getDb, getProtocolValue, setProtocolValue } from './db';
+import { rollCrateDrops, unopenedCrates, unseenCrates, type FoundCrate } from './crates';
+import { crateCostOsr } from './economy';
+import { getOsrUsdPrice } from './price';
 import {
   RARITY_MULT,
   RARITY_BOOST,
@@ -13,7 +16,6 @@ import {
   COMPOUND_LEVELS,
   MAX_COMPOUND_LEVEL,
   getShaftBonusSlots,
-  getCrateCost,
   levelMultiplier,
   CLAIM_FEE_BPS,
   CLAIM_COOLDOWN_MS,
@@ -160,6 +162,7 @@ export interface NodeRow {
   last_claim_at: number;
   accrued: number;
   accrued_updated_at: number;
+  crate_rolled_at: number;
 }
 
 interface ComponentRow {
@@ -301,6 +304,7 @@ export function settleUser(wallet: string): {
   networkGp: number;
   emission: number;
   boost: number;
+  foundCrates: FoundCrate[];
 } {
   const db = getDb();
   const user = getOrCreateUser(wallet);
@@ -337,7 +341,22 @@ export function settleUser(wallet: string): {
     return { row, comps, gp, rate, pendingOsr: accrued, storageCap };
   });
 
-  return { user, nodes: settled, userRate, userGp, networkGp, emission, boost };
+  // Crates drop as a by-product of mining, so they are rolled here rather than
+  // by a background job — every read of a wallet's state advances its chances
+  // by exactly the time that has passed. Weighted by this wallet's share of
+  // network grow power, which is the same basis emission uses.
+  const foundCrates = rollCrateDrops(
+    wallet,
+    rows.map((row) => ({
+      id: row.id,
+      family: row.family as NodeFamily,
+      crateRolledAt: row.crate_rolled_at ?? 0,
+    })),
+    networkGp > 0 ? userGp / networkGp : 0,
+    now
+  );
+
+  return { user, nodes: settled, userRate, userGp, networkGp, emission, boost, foundCrates };
 }
 
 /** Per-family node cap (mine shafts get bonus slots at L5/7/9). */
@@ -401,7 +420,7 @@ export function crateOdds(user: UserRow | null) {
   const total = Object.values(weights).reduce((a, b) => a + b, 0);
   return {
     level,
-    crateCost: getCrateCost(level),
+    crateCost: crateCostOsr(getOsrUsdPrice().usdPerOsr),
     odds: RARITIES.map((rarity) => ({ rarity, chance: weights[rarity] / total })),
     guarantees: {
       legendaryPlus: PITY.legendary.hard,
@@ -439,18 +458,40 @@ function rollRarity(user: UserRow): { rarity: Rarity; pityTriggered: 'legendary'
 
 export function openCrate(
   wallet: string,
-  crateType: 'rig_crate' | 'shaft_crate',
+  crateId: number,
   targetNodeId: number | null,
   opts?: SpendOpts & { forceSlot?: string; forceRarity?: Rarity }
 ) {
   const db = getDb();
   const { user, nodes } = settleUser(wallet);
-  const allowance = crateAllowance(user);
-  const remaining =
-    crateType === 'rig_crate' ? allowance.rigCratesRemaining : allowance.shaftCratesRemaining;
-  if (remaining <= 0) throw new GameError('No crates remaining today — upgrade your compound for more.');
 
-  const cost = getCrateCost(user.compound_level);
+  // Crates are found by mining, not bought. Opening one requires actually
+  // holding it — this is what stops an operator manufacturing unlimited crates
+  // by spending, which is what the old daily-purchase allowance permitted.
+  const crateRow = db
+    .prepare(
+      `SELECT id, crate_type, opened_at, listing_id FROM crates WHERE id = ? AND wallet = ?`
+    )
+    .get(crateId, wallet) as
+    | { id: number; crate_type: 'rig_crate' | 'shaft_crate'; opened_at: number | null; listing_id: number | null }
+    | undefined;
+  if (!crateRow) throw new GameError('crate not found in your inventory', 404);
+  if (crateRow.opened_at != null) throw new GameError('that crate has already been opened', 400);
+  if (crateRow.listing_id != null) {
+    throw new GameError('that crate is listed for sale — cancel the listing to open it', 400);
+  }
+  const crateType = crateRow.crate_type;
+
+  // Priced in dollars, so the cost has to be resolved from a live token price.
+  // With no trusted price the protocol refuses rather than guessing — charging
+  // a made-up rate is worse than making the operator wait.
+  const cost = crateCostOsr(getOsrUsdPrice().usdPerOsr);
+  if (cost == null) {
+    throw new GameError(
+      'crate pricing is unavailable right now — the OSR price feed needs updating before crates can be opened',
+      503
+    );
+  }
   const debit = offChainDebit(user, cost, opts, (have) =>
     `Not enough OSR for crate: need ${cost.toLocaleString()} OSR (you have ${have}). Claim rewards or earn more OSR first.`
   );
@@ -508,10 +549,18 @@ export function openCrate(
     tier >= RARITIES.indexOf('divine') ? 0 : user.pity_divine + 1,
     wallet
   );
+  // Consume the crate in the same pass that charges for it, so a failure
+  // cannot leave the operator paid-up with the crate still openable.
+  db.prepare(
+    `UPDATE crates SET opened_at = ?, result_rarity = ?, result_slot = ?, seen_at = COALESCE(seen_at, ?)
+      WHERE id = ? AND opened_at IS NULL`
+  ).run(now, rarity, slot, now, crateId);
+
   paySplits(wallet, 'crate_open', cost, { burn, reserve, treasury }, CRATE_FEE_ETH, {
     crateType,
     slot,
     rarity,
+    crateId,
   });
 
   let isUpgrade = false;
@@ -671,7 +720,7 @@ export function compoundInfo(wallet: string) {
     maxNodes: COMPOUND_LEVELS[Math.min(level, MAX_COMPOUND_LEVEL)].maxNodes,
     shaftBonusSlots: getShaftBonusSlots(level),
     cratesPerDay: COMPOUND_LEVELS[Math.min(level, MAX_COMPOUND_LEVEL)].cratesPerDay,
-    crateCost: getCrateCost(level),
+    crateCost: crateCostOsr(getOsrUsdPrice().usdPerOsr),
     cooldownRemainingMs,
     nextUpgradeCost:
       level >= MAX_COMPOUND_LEVEL || !nextDef
@@ -872,6 +921,10 @@ export function userOperation(wallet: string) {
       rigCratesRemaining: allowance.rigCratesRemaining,
       shaftCratesRemaining: allowance.shaftCratesRemaining,
     },
+    // Crates the operator has mined and not yet opened, plus the ones they have
+    // not acknowledged — the latter drives the "you mined a crate" notice.
+    crates: unopenedCrates(wallet),
+    unseenCrates: unseenCrates(wallet),
     compound,
     nodes: nodes.map((n, i) => ({
       id: String(n.row.id),

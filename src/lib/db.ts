@@ -128,12 +128,60 @@ function migrate(db: DatabaseSync) {
     -- A mined transaction may only ever back one settlement.
     CREATE UNIQUE INDEX IF NOT EXISTS idx_settlements_tx ON settlements(tx_hash)
       WHERE tx_hash IS NOT NULL;
+
+    -- Crates are found by mining, not bought. A row here is an unopened crate
+    -- sitting in a wallet's inventory: it exists from the moment it drops, and
+    -- opening it (which costs OSR) resolves it into a component.
+    CREATE TABLE IF NOT EXISTS crates (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      wallet TEXT NOT NULL REFERENCES users(wallet),
+      crate_type TEXT NOT NULL CHECK (crate_type IN ('rig_crate','shaft_crate')),
+      found_at INTEGER NOT NULL,
+      found_node_id INTEGER,
+      -- Set when opened; an opened crate is kept for history, never deleted.
+      opened_at INTEGER,
+      result_rarity TEXT,
+      result_slot TEXT,
+      -- Cleared once the operator has seen the "you mined a crate" notice.
+      seen_at INTEGER,
+      -- Non-null while listed for sale, so a listed crate cannot also be opened.
+      listing_id INTEGER
+    );
+    CREATE INDEX IF NOT EXISTS idx_crates_wallet ON crates(wallet, opened_at);
+
+    -- Player-to-player marketplace. Custodial: the server is the ledger and
+    -- moves the item, while OSR settles wallet-to-wallet on-chain. A listing is
+    -- the seller's offer; ownership only moves when a sale is recorded.
+    CREATE TABLE IF NOT EXISTS listings (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      seller TEXT NOT NULL REFERENCES users(wallet),
+      item_kind TEXT NOT NULL CHECK (item_kind IN ('crate','component','node')),
+      item_id INTEGER NOT NULL,
+      price_osr REAL NOT NULL CHECK (price_osr > 0),
+      created_at INTEGER NOT NULL,
+      -- 'open' | 'sold' | 'cancelled'. Rows are kept for price history.
+      status TEXT NOT NULL DEFAULT 'open',
+      buyer TEXT,
+      sold_at INTEGER,
+      sold_price_osr REAL,
+      fee_osr REAL
+    );
+    CREATE INDEX IF NOT EXISTS idx_listings_open ON listings(status, item_kind, created_at);
+    CREATE INDEX IF NOT EXISTS idx_listings_seller ON listings(seller, status);
+    -- One live listing per item. Partial index so sold/cancelled rows can pile
+    -- up in history without blocking the item being listed again later.
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_listings_item_live
+      ON listings(item_kind, item_id) WHERE status = 'open';
   `);
 
   // These counters were split after the initial local schema shipped. Keep the
   // migration additive so existing development databases continue to work.
   ensureColumn(db, 'users', 'rig_crates_opened_today', 'INTEGER NOT NULL DEFAULT 0');
   ensureColumn(db, 'users', 'shaft_crates_opened_today', 'INTEGER NOT NULL DEFAULT 0');
+
+  // Tracks how much of each node's mining has already been rolled for crate
+  // drops, so restarts cannot re-roll the same elapsed time for another chance.
+  ensureColumn(db, 'nodes', 'crate_rolled_at', 'INTEGER NOT NULL DEFAULT 0');
 }
 
 function ensureColumn(db: DatabaseSync, table: string, column: string, definition: string) {

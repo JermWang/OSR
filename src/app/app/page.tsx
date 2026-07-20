@@ -15,7 +15,7 @@ import {
 import { useWalletStore } from '@/lib/store';
 import { COMPONENT_RARITIES, NODE_SLOTS, SLOT_LABELS, rarityHex, type Rarity } from '@/lib/rarity';
 import { auraHex, auraLabel } from '@/lib/aura';
-import { RARITY_MULT, getCrateCost, WELCOME_BOOST_WINDOW_S } from '@/lib/economy';
+import { RARITY_MULT, CRATE_OPEN_USD, WELCOME_BOOST_WINDOW_S } from '@/lib/economy';
 import { SHOWROOM_NODES, type LightingPreset } from '@/components/three/Compound';
 import type { RigNodeData } from '@/components/three/NodeRig';
 import { CHAIN, TOKEN_LIVE } from '@/lib/config';
@@ -175,10 +175,11 @@ export default function CommandPage() {
       say(`Rewards claimed (${n})${gas}`);
     });
 
-  const openCrate = (crateType: 'rig_crate' | 'shaft_crate') =>
+  const openCrate = (crateId: number) =>
     run('crate', async (onStep) => {
-      setLastCrateType(crateType);
-      const res = await api.openCrate(wallet!, crateType, selected?.id, onStep);
+      const crate = op?.crates.find((c) => c.id === crateId);
+      setLastCrateType(crate?.crateType ?? 'rig_crate');
+      const res = await api.openCrate(wallet!, crateId, selected?.id, onStep);
       setCrateOpen(false);
       setCrateResult(res);
     });
@@ -531,9 +532,12 @@ export default function CommandPage() {
         <CrateCinematic
           result={crateResult}
           onClose={() => setCrateResult(null)}
+          // There is no "buy another" any more — the operator can only open
+          // what they have mined, so this reopens the inventory rather than
+          // silently charging for a crate they may not own.
           onOpenAnother={() => {
             setCrateResult(null);
-            openCrate(lastCrateType);
+            setCrateOpen(true);
           }}
         />
       )}
@@ -845,7 +849,7 @@ function CratePicker({
   op,
 }: {
   onClose: () => void;
-  onOpen: (t: 'rig_crate' | 'shaft_crate') => void;
+  onOpen: (crateId: number) => void;
   busy: string | null;
   op: ReturnType<typeof useOperation.getState>['op'];
 }) {
@@ -854,7 +858,8 @@ function CratePicker({
   useEffect(() => {
     if (wallet) api.crateOdds(wallet).then(setOdds).catch(() => setOdds(null));
   }, [wallet]);
-  const cost = getCrateCost(op?.level ?? 1);
+  const cost = op?.compound.crateCost ?? null;
+  const crates = op?.crates ?? [];
   return (
     <Modal onClose={onClose} title="Supply Crates">
       {odds && (
@@ -879,26 +884,55 @@ function CratePicker({
           </p>
         </>
       )}
-      <div className="grid grid-cols-2 gap-2">
-        <CrateCard
-          tone="amber"
-          title="Rig Crate"
-          remaining={op?.crateCooldown.rigCratesRemaining ?? 0}
-          perDay={op?.compound.cratesPerDay ?? 3}
-          cost={cost}
-          disabled={busy === 'crate' || (op?.crateCooldown.rigCratesRemaining ?? 0) <= 0}
-          onOpen={() => onOpen('rig_crate')}
-        />
-        <CrateCard
-          tone="steel"
-          title="Shaft Crate"
-          remaining={op?.crateCooldown.shaftCratesRemaining ?? 0}
-          perDay={op?.compound.cratesPerDay ?? 3}
-          cost={cost}
-          disabled={busy === 'crate' || (op?.crateCooldown.shaftCratesRemaining ?? 0) <= 0}
-          onOpen={() => onOpen('shaft_crate')}
-        />
-      </div>
+      {/* Crates are mined, not bought — this lists what the operator actually
+          found. With nothing to show, the honest answer is "keep mining", not
+          a buy button. */}
+      {crates.length === 0 ? (
+        <div className="rounded border border-ink-600 bg-ink-800/60 p-4 text-center">
+          <div className="text-sm font-semibold text-steel-200">No crates in your inventory</div>
+          <p className="mt-1 text-[11px] leading-relaxed text-steel-500">
+            Crates are found by mining — your rigs turn them up on their own. Bigger operations find
+            them more often, and the whole network only turns up so many a day.
+          </p>
+        </div>
+      ) : (
+        <div className="max-h-64 space-y-1.5 overflow-y-auto pr-1">
+          {crates.map((crate) => (
+            <div
+              key={crate.id}
+              className={`flex items-center gap-2.5 rounded border p-2 ${
+                crate.crateType === 'rig_crate'
+                  ? 'border-amber-500/40 bg-amber-500/5'
+                  : 'border-steel-500/40 bg-steel-500/5'
+              }`}
+            >
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src="/mining shaft crate.png" alt="" className="h-11 w-11 rounded object-cover" />
+              <div className="min-w-0">
+                <div className="text-xs font-semibold text-white">
+                  {crate.crateType === 'rig_crate' ? 'Rig Crate' : 'Shaft Crate'}
+                </div>
+                <div className="text-[10px] text-steel-500">
+                  Mined {new Date(crate.foundAt).toLocaleDateString()}
+                </div>
+              </div>
+              <button
+                className="btn-primary ml-auto shrink-0 !py-1.5 text-xs"
+                disabled={busy === 'crate' || cost == null}
+                onClick={() => onOpen(crate.id)}
+              >
+                {cost == null ? 'Pricing unavailable' : `Open · ${cost.toLocaleString()} OSR`}
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+      {cost == null && crates.length > 0 && (
+        <p className="mt-2 text-[10px] leading-relaxed text-amber-300/80">
+          Crates are priced at ${CRATE_OPEN_USD} of OSR, which needs a current token price. Opening
+          is paused until the price feed is refreshed rather than charging a guessed rate.
+        </p>
+      )}
     </Modal>
   );
 }

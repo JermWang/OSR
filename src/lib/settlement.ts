@@ -29,7 +29,8 @@ export type SettlementAction =
   | 'OpenCrate'
   | 'UpgradeCompound'
   | 'ExpediteCompound'
-  | 'Claim';
+  | 'Claim'
+  | 'MarketBuy';
 
 const TRANSFER_ABI = parseAbi([
   'event Transfer(address indexed from, address indexed to, uint256 value)',

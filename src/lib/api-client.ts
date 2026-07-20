@@ -35,7 +35,8 @@ export interface CompoundInfo {
   maxNodes: number;
   shaftBonusSlots: number;
   cratesPerDay: number;
-  crateCost: number;
+  /** Null when no trusted OSR price exists, so crates cannot be priced. */
+  crateCost: number | null;
   cooldownRemainingMs: number;
   nextUpgradeCost: null | {
     targetLevel: number;
@@ -62,6 +63,20 @@ export interface UserOperation {
   pending: Record<string, number>;
   claimCooldownRemainingMs: number;
   crateCooldown: { rigCratesRemaining: number; shaftCratesRemaining: number };
+  /** Mined, unopened crates held by this wallet. */
+  crates: Array<{
+    id: number;
+    crateType: 'rig_crate' | 'shaft_crate';
+    foundAt: number;
+    foundNodeId: number | null;
+  }>;
+  /** Subset of the above the operator has not been shown yet. */
+  unseenCrates: Array<{
+    id: number;
+    crateType: 'rig_crate' | 'shaft_crate';
+    foundAt: number;
+    foundNodeId: number | null;
+  }>;
   compound: CompoundInfo;
   nodes: NodeInfo[];
 }
@@ -332,16 +347,17 @@ export const api = {
     return { ...res.result, txHash: res.txHash, gasOsr: res.gasOsr ?? 0 };
   },
 
+  /** Opens a crate the wallet has already mined. Crates cannot be bought. */
   openCrate: (
     wallet: string,
-    crateType: 'rig_crate' | 'shaft_crate',
+    crateId: number,
     targetNodeId?: string | number,
     onStep?: StepHandler
   ) =>
     runAction<CrateResult>(
       '/crates/open',
       wallet,
-      { crateType, targetNodeId: targetNodeId == null ? null : Number(targetNodeId) },
+      { crateId, targetNodeId: targetNodeId == null ? null : Number(targetNodeId) },
       onStep
     ),
 

@@ -10,6 +10,7 @@ import {
   COMPOUND_FEE_ETH,
   COMPOUND_LEVELS,
   CRATE_FEE_ETH,
+  CRATE_OPEN_USD,
   EXPEDITE_FEE_ETH,
   MAX_COMPOUND_LEVEL,
   MINT_FEE_ETH,
@@ -24,7 +25,6 @@ import {
   HALVING_PERIOD_DAYS,
   HALVING_PERIOD_LABEL,
   HALVING_SCHEDULE_TEXT,
-  getCrateCost,
   getShaftBonusSlots,
 } from '@/lib/economy';
 
@@ -221,8 +221,8 @@ export default function TokenomicsPage() {
             />
             <FeeCard
               label="Crate cost"
-              value={`${getCrateCost(1)} → ${getCrateCost(10)} OSR`}
-              caption={`by compound level · +${CRATE_FEE_ETH} ETH fee`}
+              value={`$${CRATE_OPEN_USD} of OSR`}
+              caption={`priced in USD, so it does not drift with the token · +${CRATE_FEE_ETH} ETH fee`}
             />
             <FeeCard
               label="Upgrade & crate split"
@@ -340,8 +340,6 @@ export default function TokenomicsPage() {
                   <th className="stat-label px-4 py-3 text-right font-normal">Upgrade cost</th>
                   <th className="stat-label px-4 py-3 text-right font-normal">Max nodes / family</th>
                   <th className="stat-label px-4 py-3 text-right font-normal">Shaft bonus</th>
-                  <th className="stat-label px-4 py-3 text-right font-normal">Crates / day</th>
-                  <th className="stat-label px-4 py-3 text-right font-normal">Crate cost</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-ink-600/60">
@@ -357,12 +355,6 @@ export default function TokenomicsPage() {
                       <td className="px-4 py-2.5 text-right font-mono text-white">{row.maxNodes}</td>
                       <td className="px-4 py-2.5 text-right font-mono text-steel-300">
                         {bonus > 0 ? `+${bonus} shafts` : '—'}
-                      </td>
-                      <td className="px-4 py-2.5 text-right font-mono text-white">
-                        {row.cratesPerDay}
-                      </td>
-                      <td className="px-4 py-2.5 text-right font-mono text-white">
-                        {getCrateCost(lvl).toLocaleString()} OSR
                       </td>
                     </tr>
                   );

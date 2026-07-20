@@ -75,10 +75,46 @@ export function getShaftBonusSlots(level: number): number {
   return 0;
 }
 
-/** Crate cost scales with compound level: 500 OSR at L1 -> 1625 at L10. */
-export function getCrateCost(level: number): number {
-  return Math.floor(500 * (1 + 0.25 * (level - 1)));
+/**
+ * What it costs, in US dollars, to open a mined crate.
+ *
+ * Priced in dollars rather than OSR because a flat OSR price drifts with the
+ * token: 500 OSR was $0.50 at a $1M cap and $25 at a $50M cap. Pegging the
+ * dollar value keeps a crate feeling the same regardless of where OSR trades.
+ */
+export const CRATE_OPEN_USD = Number(process.env.NEXT_PUBLIC_OSR_CRATE_USD ?? 5);
+
+/**
+ * Convert the dollar price into OSR at a given token price.
+ *
+ * Returns null when no price is known — callers must refuse to charge rather
+ * than guess, since a wrong price here either gives crates away or overcharges
+ * every operator.
+ */
+export function crateCostOsr(osrUsdPrice: number | null): number | null {
+  if (!osrUsdPrice || !(osrUsdPrice > 0)) return null;
+  return Math.max(1, Math.round(CRATE_OPEN_USD / osrUsdPrice));
 }
+
+/**
+ * Global cap on how many crates the whole network may find per day.
+ *
+ * Deliberately scarce: crates are meant to feel like a find, and an uncapped
+ * drop rate is the same infinite-supply problem as letting people buy them.
+ * Raise it as the player base grows.
+ */
+export const CRATES_FOUND_PER_DAY = Number(process.env.NEXT_PUBLIC_OSR_CRATES_PER_DAY ?? 75);
+
+/**
+ * Cap on how much of the daily crate budget a single wallet may take.
+ *
+ * Drops are weighted by grow-power share, so without this the largest operation
+ * would sweep most of a 75-crate day. Mirrors SHARE_CAP's role in emission.
+ */
+export const CRATE_WALLET_DAILY_CAP = Number(process.env.NEXT_PUBLIC_OSR_CRATE_WALLET_CAP ?? 6);
+
+/** Marketplace fee, in basis points, taken from the sale price. */
+export const MARKET_FEE_BPS = Number(process.env.NEXT_PUBLIC_OSR_MARKET_FEE_BPS ?? 250);
 
 /** Node level -> production multiplier (L11+ extrapolates +0.6/level). */
 export function levelMultiplier(level: number): number {
