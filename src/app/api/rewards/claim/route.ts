@@ -73,10 +73,10 @@ export async function POST(request: Request) {
       if (payoutError instanceof GameError && payoutError.status === 400) throw payoutError;
       // The rewards are already spent server-side; record the debt rather than
       // dropping it, and tell the operator plainly instead of failing silently.
-      recordPayout(wallet, net, 'PENDING', { error: String(payoutError), result });
+      recordPayout(wallet, net, null, { error: String(payoutError), result });
       console.error('[claim] payout failed after accrual was consumed', payoutError);
       throw new GameError(
-        `Rewards were settled but the transfer did not go through. ${Math.round(net).toLocaleString()} OSR is recorded as owed to you and will be retried.`,
+        `Rewards were settled but the transfer did not go through. ${Math.round(net).toLocaleString()} OSR is recorded as owed to you.`,
         502
       );
     }

@@ -380,22 +380,42 @@ export async function payoutOsr(toWallet: string, osrAmount: number): Promise<Pa
   return { hash, sentOsr, gasOsr };
 }
 
-/** Record a completed payout so it is auditable alongside spends. */
-export function recordPayout(wallet: string, osrAmount: number, txHash: string, result: unknown) {
+/**
+ * Record a payout so it is auditable alongside spends.
+ *
+ * `txHash` is null when the transfer did not go through. The accrual has already
+ * been consumed by then, so the row is the only record that the protocol owes
+ * this wallet — it must always be writable. Null rather than a placeholder
+ * string because the unique index on tx_hash is partial (`WHERE tx_hash IS NOT
+ * NULL`): a literal like 'PENDING' inserts once and then collides on every
+ * later failure, which is exactly when the debt most needs recording.
+ *
+ * Status distinguishes the two: 'settled' means OSR moved, 'owed' means it did
+ * not. Both are terminal — nothing retries an owed row automatically, so they
+ * are settled by hand.
+ */
+export function recordPayout(
+  wallet: string,
+  osrAmount: number,
+  txHash: string | null,
+  result: unknown
+) {
+  const settled = txHash != null;
   getDb()
     .prepare(
       `INSERT INTO settlements
          (nonce, wallet, action, detail, osr_amount, fee_wei, burn_bps, treasury_bps,
           deadline, status, tx_hash, applied_result, created_at, settled_at)
-       VALUES (?,?,'Claim','claim',?, '0',0,0,0,'settled',?,?,?,?)`
+       VALUES (?,?,'Claim','claim',?, '0',0,0,0,?,?,?,?,?)`
     )
     .run(
       randomNonce(),
       wallet,
       String(osrAmount),
+      settled ? 'settled' : 'owed',
       txHash,
       JSON.stringify(result ?? null),
       Date.now(),
-      Date.now()
+      settled ? Date.now() : null
     );
 }

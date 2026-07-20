@@ -85,7 +85,10 @@ export async function POST(request: Request) {
         payoutHash = payout.hash;
         recordPayout(listing.seller, payout.sentOsr, payout.hash, { listingId });
       } catch (payoutError) {
-        recordPayout(listing.seller, toSeller, 'PENDING', {
+        // Null, not a placeholder string: the unique index on tx_hash is
+        // partial, so a literal would insert once then collide on every later
+        // failed payout — precisely when the debt most needs recording.
+        recordPayout(listing.seller, toSeller, null, {
           listingId,
           error: String(payoutError),
         });
