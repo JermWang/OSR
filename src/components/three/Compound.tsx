@@ -31,7 +31,10 @@ export function nodePosition(index: number, family: 'oil' | 'mine', seed: number
   return [x, 0, z];
 }
 
-/** Visual-only source models shown for any node family the wallet is missing. */
+/**
+ * Landing-page hero rigs ONLY. Never rendered inside the app: the in-game
+ * compound shows exactly what the wallet owns, and nothing it does not.
+ */
 export const SHOWROOM_NODES: RigNodeData[] = [
   {
     id: 'showroom-oil',
@@ -744,8 +747,8 @@ export function Compound({
     const deployedOil = nodes.filter((n) => n.type === 'oil');
     const deployedMine = nodes.filter((n) => n.type !== 'oil');
     return {
-      oil: deployedOil.length > 0 ? deployedOil : [SHOWROOM_NODES[0]],
-      mine: deployedMine.length > 0 ? deployedMine : [SHOWROOM_NODES[1]],
+      oil: deployedOil,
+      mine: deployedMine,
     };
   }, [nodes]);
 
@@ -800,13 +803,13 @@ export function Compound({
 
       {byFamily.oil.map((n, i) => (
         <group key={n.id} position={nodePosition(i, 'oil', Number(n.id) || i)}>
-          <NodeRig node={n} targetSize={9} onClick={n.id.startsWith('showroom-') ? undefined : onSelect} />
+          <NodeRig node={n} targetSize={9} onClick={onSelect} />
           {selectedNodeId === n.id && <SelectionRing />}
         </group>
       ))}
       {byFamily.mine.map((n, i) => (
         <group key={n.id} position={nodePosition(i, 'mine', Number(n.id) || i)}>
-          <NodeRig node={n} targetSize={9} onClick={n.id.startsWith('showroom-') ? undefined : onSelect} />
+          <NodeRig node={n} targetSize={9} onClick={onSelect} />
           {selectedNodeId === n.id && <SelectionRing />}
         </group>
       ))}

@@ -28,7 +28,6 @@ import {
   emissionRateAt,
   halvingInfo,
   welcomeBoostFactor,
-  SIM_NETWORK_GP,
   SHARE_CAP,
   STORAGE_CAP_SECONDS,
   COMPOUND_COOLDOWN_MS,
@@ -318,7 +317,7 @@ export function settleUser(wallet: string): {
   const userGp = withComps.reduce((sum, n) => sum + nodeGp(n.row, n.comps), 0);
   // Denominator is the whole protocol. Math.max guards the case where a cached
   // total lags a just-written node, which would otherwise push share above 1.
-  const networkGp = Math.max(networkGrowPower(now), userGp) + SIM_NETWORK_GP;
+  const networkGp = Math.max(networkGrowPower(now), userGp);
   const share = networkGp > 0 ? Math.min(userGp / networkGp, SHARE_CAP) : 0;
   const userRate = share * emission * boost;
 
@@ -950,7 +949,7 @@ export function protocolOverview() {
   const halving = halvingInfo(g, now);
   return {
     networkProductionRate: halving.currentRatePerSec,
-    emissionFactors: { simNetworkGp: SIM_NETWORK_GP, shareCap: SHARE_CAP },
+    emissionFactors: { shareCap: SHARE_CAP },
     totalNodes,
     totalOilRigs,
     totalMiningShafts,

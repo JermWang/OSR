@@ -16,7 +16,7 @@ import { useWalletStore } from '@/lib/store';
 import { COMPONENT_RARITIES, NODE_SLOTS, SLOT_LABELS, rarityHex, type Rarity } from '@/lib/rarity';
 import { auraHex, auraLabel } from '@/lib/aura';
 import { RARITY_MULT, WELCOME_BOOST_WINDOW_S } from '@/lib/economy';
-import { SHOWROOM_NODES, type LightingPreset } from '@/components/three/Compound';
+import { type LightingPreset } from '@/components/three/Compound';
 import type { RigNodeData } from '@/components/three/NodeRig';
 import { CHAIN, TOKEN_LIVE } from '@/lib/config';
 
@@ -99,8 +99,6 @@ export default function CommandPage() {
       isActive: node.isActive,
       components: node.components,
     }));
-    if (!visible.some((node) => node.type === 'oil')) visible.push(SHOWROOM_NODES[0]);
-    if (!visible.some((node) => node.type === 'mine')) visible.push(SHOWROOM_NODES[1]);
     return visible;
   }, [nodes]);
   const focusedRig = sceneNodes.find((node) => node.id === cameraFocusId) ?? null;
@@ -450,11 +448,6 @@ export default function CommandPage() {
               >
                 {auraLabel(focusedRig.level)}
               </span>
-              {focusedRig.id.startsWith('showroom-') && (
-                <span className="ml-auto font-mono text-[9px] uppercase tracking-widest text-steel-500">
-                  Preview
-                </span>
-              )}
             </div>
             <div className="mt-2 grid grid-cols-2 gap-x-3 gap-y-1">
               {NODE_SLOTS[focusedRig.type === 'oil' ? 'oil' : 'mine'].map((slot) => {
@@ -501,16 +494,6 @@ export default function CommandPage() {
             →
           </button>
         </div>
-        {(oilCount === 0 || mineCount === 0) && (
-          <div className="pointer-events-none absolute left-3 top-3 max-w-[280px] rounded border border-amber-500/40 bg-ink-900/85 px-3 py-2 backdrop-blur">
-            <div className="font-mono text-[10px] font-bold uppercase tracking-widest text-amber-400">
-              Model showroom · preview only
-            </div>
-            <div className="mt-1 text-[11px] text-steel-300">
-              Missing node families use your original full Blender models · preview only
-            </div>
-          </div>
-        )}
         {/* Lighting selector */}
         <div className="absolute right-3 top-3 flex gap-1 rounded border border-ink-600 bg-ink-900/80 p-1 backdrop-blur">
           {(

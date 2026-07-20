@@ -11,6 +11,7 @@ export type LeaderboardMetric = 'compound_level' | 'total_produced' | 'total_bur
 export interface GlobalProfile {
   wallet: string;
   displayName: string | null;
+  avatarUrl: string | null;
   joinedAt: number;
   lastSeenAt: number;
   totalSessions: number;
@@ -39,6 +40,7 @@ export interface ActivityItem {
 type ProfileRow = {
   wallet: string;
   display_name: string | null;
+  avatar_url?: string | null;
   joined_at: number | string;
   last_seen_at: number | string;
   total_sessions: number;
@@ -56,6 +58,7 @@ function profileFromRow(row: ProfileRow): GlobalProfile {
   return {
     wallet: row.wallet,
     displayName: row.display_name,
+    avatarUrl: row.avatar_url ?? null,
     joinedAt: Number(row.joined_at),
     lastSeenAt,
     totalSessions: Number(row.total_sessions),
@@ -174,6 +177,7 @@ export async function globalLeaderboard(metric: LeaderboardMetric) {
       rank: index + 1,
       wallet: row.wallet,
       displayName: row.displayName,
+      avatarUrl: row.avatarUrl,
       online: row.online,
       compoundLevel: row.compoundLevel,
       maxLevel: row.maxNodeLevel,
@@ -214,4 +218,78 @@ export async function linkPrivyIdentity(identity: {
     { onConflict: 'privy_user_id' }
   );
   if (error) throw new Error(`Supabase Privy identity sync failed: ${error.message}`);
+}
+
+/**
+ * Player-editable identity fields — the only profile columns a player may
+ * write. Everything else on the row is a projection of game state and is
+ * owned by the sync path, so this update deliberately cannot touch it.
+ *
+ * The display name mirrors the DB constraint (2-28 chars) so the caller gets
+ * a readable error instead of a check-violation string; the constraint stays
+ * as the backstop.
+ */
+export async function updateProfileIdentity(
+  wallet: string,
+  fields: { displayName?: string | null; avatarUrl?: string | null }
+): Promise<GlobalProfile> {
+  if (!supabaseConfigured()) throw new Error('profile database is not configured');
+
+  const patch: Record<string, string | null> = {};
+  if (fields.displayName !== undefined) {
+    const name = fields.displayName?.trim() || null;
+    if (name != null) {
+      if (name.length < 2 || name.length > 28) {
+        throw new Error('display name must be 2-28 characters');
+      }
+      // Printable, no control characters; the game renders these everywhere.
+      if (!/^[\p{L}\p{N}\p{P}\p{S} ]+$/u.test(name)) {
+        throw new Error('display name contains unsupported characters');
+      }
+    }
+    patch.display_name = name;
+  }
+  if (fields.avatarUrl !== undefined) patch.avatar_url = fields.avatarUrl;
+  if (Object.keys(patch).length === 0) throw new Error('nothing to update');
+
+  // The session sync creates the row on first sign-in, so a missing row means
+  // the wallet has never authenticated — reject rather than invent a profile.
+  const { data, error } = await getServerSupabase()
+    .from('profiles')
+    .update(patch)
+    .eq('wallet', wallet.toLowerCase())
+    .select('*')
+    .maybeSingle();
+  if (error) throw new Error(`profile update failed: ${error.message}`);
+  if (!data) throw new Error('profile not found — sign in once before editing it');
+  return profileFromRow(data as ProfileRow);
+}
+
+/**
+ * Store an avatar image and point the profile at it.
+ *
+ * One object per wallet (`<wallet>.<ext>`, upsert) so re-uploads replace the
+ * old file instead of accumulating orphans. The public bucket URL is written
+ * to the profile row, which is what every reader actually uses.
+ */
+export async function saveAvatar(
+  wallet: string,
+  bytes: Uint8Array,
+  contentType: string
+): Promise<GlobalProfile> {
+  if (!supabaseConfigured()) throw new Error('profile database is not configured');
+  const ext = contentType === 'image/png' ? 'png' : contentType === 'image/webp' ? 'webp' : 'jpg';
+  const path = `${wallet.toLowerCase()}.${ext}`;
+  const supabase = getServerSupabase();
+
+  const { error: uploadError } = await supabase.storage
+    .from('avatars')
+    .upload(path, bytes, { contentType, upsert: true });
+  if (uploadError) throw new Error(`avatar upload failed: ${uploadError.message}`);
+
+  const { data: pub } = supabase.storage.from('avatars').getPublicUrl(path);
+  // Cache-bust: the path is stable across re-uploads, so browsers would keep
+  // showing the old image forever without a version marker.
+  const url = `${pub.publicUrl}?v=${Date.now()}`;
+  return updateProfileIdentity(wallet, { avatarUrl: url });
 }

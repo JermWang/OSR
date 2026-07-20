@@ -82,7 +82,7 @@ export interface UserOperation {
 
 export interface ProtocolOverview {
   networkProductionRate: number;
-  emissionFactors: { simNetworkGp: number; shareCap: number };
+  emissionFactors: { shareCap: number };
   totalNodes: number;
   totalOilRigs: number;
   totalMiningShafts: number;
@@ -157,6 +157,7 @@ export interface InventoryItem {
 export interface GlobalProfile {
   wallet: string;
   displayName: string | null;
+  avatarUrl: string | null;
   joinedAt: number;
   lastSeenAt: number;
   totalSessions: number;
@@ -393,6 +394,39 @@ export const api = {
   /** Buys a listing, settling on-chain when the token is live. */
   marketBuy: (wallet: string, listingId: number, onStep?: StepHandler) =>
     runAction<MarketPurchase>('/market/buy', wallet, { listingId }, onStep),
+
+
+  /** Set or clear your display name. */
+  updateProfile: (wallet: string, displayName: string | null) =>
+    post<{ profile: GlobalProfile }>('/profiles/update', { wallet, displayName }),
+
+  /**
+   * Upload a profile picture. Multipart, so it bypasses the JSON request
+   * helper — the browser must set its own multipart boundary header.
+   */
+  uploadAvatar: async (wallet: string, file: File): Promise<GlobalProfile> => {
+    const form = new FormData();
+    form.set('wallet', wallet);
+    form.set('file', file);
+    let accessToken: string | null = null;
+    let identityToken: string | null = null;
+    if (PRIVY_CONFIGURED) {
+      try {
+        [accessToken, identityToken] = await Promise.all([getAccessToken(), getIdentityToken()]);
+      } catch { /* server rejects if absent */ }
+    }
+    const res = await fetch('/api/profiles/avatar', {
+      method: 'POST',
+      body: form,
+      headers: {
+        ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
+        ...(identityToken ? { 'privy-id-token': identityToken } : {}),
+      },
+    });
+    const body = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(body?.error ?? `${res.status} ${res.statusText}`);
+    return body.profile as GlobalProfile;
+  },
 
   /** Acknowledge mined-crate notices so they stop being shown. */
   markCratesSeen: (wallet: string) => post<{ ok: true }>('/crates/seen', { wallet }),

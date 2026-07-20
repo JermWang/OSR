@@ -334,14 +334,6 @@ export function welcomeBoostFactor(joinedAtMs: number | null, nowMs: number): nu
 }
 
 /**
- * Additional simulated grow power folded into the emission denominator. Kept at
- * 0 so no fabricated participants are counted — the denominator is the real sum
- * of every recorded node's grow power (see networkGrowPower in game.ts). Raise
- * this only to damp early solo dominance; it is a tuning knob, not a fix.
- */
-export const SIM_NETWORK_GP = 0;
-
-/**
  * One-time OSR credited to a wallet on first sight so a new operator can afford
  * their first node (an Oil Rig burns 1,000 OSR). Without this a fresh wallet has
  * no route to its first node: no nodes means no production means nothing to
