@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import WalletButton from '@/components/ui/WalletButton';
 import DisclaimerModal from '@/components/ui/DisclaimerModal';
+import DeployNotice from '@/components/ui/DeployNotice';
 import NavBar from '@/components/ui/NavBar';
 import { useEvmWallet } from '@/lib/evm';
 import { CHAIN, TOKEN_LIVE } from '@/lib/config';
@@ -23,6 +24,8 @@ function OsrBalancePill() {
 export default function AppLayout({ children }: { children: React.ReactNode }) {
   return (
     <div className="app-surface flex min-h-screen flex-col">
+      {/* Mounted once: starts the status poller for the whole app. */}
+      <DeployNotice />
       <div className="border-b border-emerald-500/20 bg-gradient-to-r from-transparent via-emerald-500/10 to-transparent py-[5px] text-center font-mono text-[10.5px] uppercase tracking-[.24em] text-emerald-400">
         <span className="mr-2 inline-block h-1.5 w-1.5 rounded-full bg-emerald-400 shadow-[0_0_8px_#00c805]" />
         {CHAIN.name} — Mainnet · chain {CHAIN.id} · gas ETH

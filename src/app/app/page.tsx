@@ -13,6 +13,7 @@ import {
   type StepHandler,
 } from '@/lib/api-client';
 import { useWalletStore } from '@/lib/store';
+import { useDeployStatus } from '@/lib/useDeployStatus';
 import { COMPONENT_RARITIES, NODE_SLOTS, SLOT_LABELS, rarityHex, type Rarity } from '@/lib/rarity';
 import { auraHex, auraLabel } from '@/lib/aura';
 import { RARITY_MULT, WELCOME_BOOST_WINDOW_S } from '@/lib/economy';
@@ -144,11 +145,20 @@ export default function CommandPage() {
   const run = useCallback(
     async (label: string, fn: (onStep: StepHandler) => Promise<unknown>, success?: string) => {
       if (!wallet) return say('Connect your wallet first');
+      // Refuse to start anything while a deploy is rolling out. A spend puts
+      // OSR on-chain before the server records it, so a cutover landing between
+      // those two steps costs the player real tokens and leaves us owing a
+      // refund. Waiting a couple of minutes is much cheaper than reconciling.
+      if (useDeployStatus.getState().deploying) {
+        return say('Server update in progress — hold off a moment so nothing is interrupted');
+      }
       // No client-side contract gate: the server decides whether an action
       // settles on-chain or runs straight through the engine, and answers with
       // whichever it did. Blocking here would lock the game before the token
       // ships without adding any protection the server does not already give.
       setBusy(label);
+      // Held so a background reload cannot fire mid-transaction.
+      useDeployStatus.getState().setBusy(true);
       try {
         // Settlement is several transactions deep — an approval, the action
         // itself, then confirmation — so narrate each stage rather than leaving
@@ -160,6 +170,7 @@ export default function CommandPage() {
         say(e instanceof Error ? e.message : `${label} failed`);
       } finally {
         setBusy(null);
+        useDeployStatus.getState().setBusy(false);
       }
     },
     [wallet, refresh, say]
