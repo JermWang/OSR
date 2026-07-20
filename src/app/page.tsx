@@ -123,9 +123,9 @@ export default function Landing() {
             <Play size={19} weight="fill" aria-hidden />
             Enter the Reserve
           </Link>
+          <span className="landing-blink font-mono text-[11px] uppercase tracking-[.18em] text-amber-100/75">Deploy your first rig to start earning</span>
           {/* Self-hiding until the token exists — see CopyContract. */}
           <CopyContract />
-          <span className="landing-blink font-mono text-[11px] uppercase tracking-[.18em] text-amber-100/75">Deploy your first rig to start earning</span>
         </div>
       </section>
 
