@@ -6,6 +6,7 @@ import { useEffect, useState } from 'react';
 import { Play, Wallet } from '@phosphor-icons/react';
 import { CHAIN } from '@/lib/config';
 import { SHOWROOM_NODES } from '@/components/three/Compound';
+import CopyContract from '@/components/ui/CopyContract';
 import { RARITIES } from '@/lib/rarity';
 
 const Scene = dynamic(() => import('@/components/three/Scene'), { ssr: false });
@@ -122,6 +123,8 @@ export default function Landing() {
             <Play size={19} weight="fill" aria-hidden />
             Enter the Reserve
           </Link>
+          {/* Self-hiding until the token exists — see CopyContract. */}
+          <CopyContract />
           <span className="landing-blink font-mono text-[11px] uppercase tracking-[.18em] text-amber-100/75">Deploy your first rig to start earning</span>
         </div>
       </section>

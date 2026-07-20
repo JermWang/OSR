@@ -54,16 +54,20 @@ export const COMPOUND_LEVELS: Record<
   number,
   { maxNodes: number; cratesPerDay: number; osrUpgradeCost: number; feeEth: number }
 > = {
+  // Costs doubled across the board so the first upgrade lands at 1,000 OSR.
+  // Scaling the whole curve rather than only raising the floor keeps the
+  // progression intact — bumping L2 alone to 1,000 would have made it cost the
+  // same as L3, so the second upgrade would have been free progress.
   1: { maxNodes: 2, cratesPerDay: 3, osrUpgradeCost: 0, feeEth: 0 },
-  2: { maxNodes: 3, cratesPerDay: 4, osrUpgradeCost: 500, feeEth: 0.00001 },
-  3: { maxNodes: 3, cratesPerDay: 5, osrUpgradeCost: 1000, feeEth: 0.00001 },
-  4: { maxNodes: 4, cratesPerDay: 6, osrUpgradeCost: 2000, feeEth: 0.00001 },
-  5: { maxNodes: 4, cratesPerDay: 8, osrUpgradeCost: 4000, feeEth: 0.00001 },
-  6: { maxNodes: 5, cratesPerDay: 10, osrUpgradeCost: 8000, feeEth: 0.00001 },
-  7: { maxNodes: 5, cratesPerDay: 12, osrUpgradeCost: 15000, feeEth: 0.00001 },
-  8: { maxNodes: 6, cratesPerDay: 15, osrUpgradeCost: 25000, feeEth: 0.00001 },
-  9: { maxNodes: 7, cratesPerDay: 18, osrUpgradeCost: 40000, feeEth: 0.00001 },
-  10: { maxNodes: 8, cratesPerDay: 20, osrUpgradeCost: 60000, feeEth: 0.00001 },
+  2: { maxNodes: 3, cratesPerDay: 4, osrUpgradeCost: 1000, feeEth: 0.00001 },
+  3: { maxNodes: 3, cratesPerDay: 5, osrUpgradeCost: 2000, feeEth: 0.00001 },
+  4: { maxNodes: 4, cratesPerDay: 6, osrUpgradeCost: 4000, feeEth: 0.00001 },
+  5: { maxNodes: 4, cratesPerDay: 8, osrUpgradeCost: 8000, feeEth: 0.00001 },
+  6: { maxNodes: 5, cratesPerDay: 10, osrUpgradeCost: 16000, feeEth: 0.00001 },
+  7: { maxNodes: 5, cratesPerDay: 12, osrUpgradeCost: 30000, feeEth: 0.00001 },
+  8: { maxNodes: 6, cratesPerDay: 15, osrUpgradeCost: 50000, feeEth: 0.00001 },
+  9: { maxNodes: 7, cratesPerDay: 18, osrUpgradeCost: 80000, feeEth: 0.00001 },
+  10: { maxNodes: 8, cratesPerDay: 20, osrUpgradeCost: 120000, feeEth: 0.00001 },
 };
 export const MAX_COMPOUND_LEVEL = 10;
 
