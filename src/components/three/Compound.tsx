@@ -6,7 +6,8 @@
 import { useMemo, useRef } from 'react';
 import * as THREE from 'three';
 import { useFrame } from '@react-three/fiber';
-import { Environment, useGLTF } from '@react-three/drei';
+import { useGLTF } from '@react-three/drei';
+import SafeEnvironment from './SafeEnvironment';
 import { NodeRig, type RigNodeData } from './NodeRig';
 
 export type LightingPreset = 'sunset' | 'dusk' | 'neutral' | 'night';
@@ -783,14 +784,16 @@ export function Compound({
         color={preset === 'night' ? '#536fba' : '#93b9d6'}
         intensity={p.ambient * 1.6}
       />
-      {/* Delivered HDRI (cape_hill_2k) lights the scene and, outside night
-          mode, is the visible sky. */}
-      <Environment
-        files="/env/cape_hill_2k.hdr"
+      {/* Delivered HDRI (cape_hill, downscaled to 1k) lights the scene and, outside night
+          mode, is the visible sky. Loaded defensively — see SafeEnvironment:
+          a failed environment fetch must not take the whole compound down. */}
+      <SafeEnvironment
+        files="/env/cape_hill_1k.hdr"
         environmentIntensity={p.envIntensity}
         background={preset !== 'night'}
         backgroundBlurriness={0.04}
         backgroundIntensity={preset === 'dusk' ? 0.35 : preset === 'sunset' ? 0.6 : 1}
+        fallbackSky={p.sky}
       />
 
       <Ground />
