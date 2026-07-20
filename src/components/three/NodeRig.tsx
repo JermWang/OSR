@@ -26,6 +26,7 @@ import {
 } from './fx';
 import { applyRarityRim, applyRarityToMaterial, type RimUniforms } from './materials';
 import { NODE_SLOTS, RARITIES, type NodeFamily, type Rarity } from '@/lib/rarity';
+import { auraHex } from '@/lib/aura';
 
 export interface RigNodeData {
   id: string;
@@ -278,6 +279,7 @@ export function NodeRig({
   const topRarity = RARITIES[topTier];
   const active = node.isActive ?? true;
   const theme = levelTheme(level);
+  const auraColor = auraHex(level);
   const scale = (targetSize / themed.sourceWidth) * theme.scale;
   const moteCount = topTier >= 6 ? 70 : topTier >= 5 ? 45 : topTier >= 4 ? 24 : 0;
 
@@ -298,9 +300,12 @@ export function NodeRig({
       <group scale={scale}>
         <primitive object={themed.scene} />
       </group>
-      {/* Flat 2D yellow highlight circle — the single ground ring under a rig.
-          Sized to clear the wider mine platform so it reads around both types. */}
-      <GroundGlow color="#ffc23d" radius={targetSize * 0.74} opacity={0.85} />
+      {/* Flat 2D highlight circle — the single ground ring under a rig. Its
+          colour is the node's aura tier, so the ring reads as a rank at a
+          glance (rust → bronze → steel → silver → amber → gold) rather than
+          being decorative. Sized to clear the wider mine platform so it reads
+          around both node types. */}
+      <GroundGlow color={auraColor} radius={targetSize * 0.74} opacity={0.85} />
       <group scale={targetSize / 4.8}>
         <RarityAura components={node.components} isActive={active} />
       </group>

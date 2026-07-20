@@ -2,19 +2,19 @@
 // (reverse-engineered constants; 7-element arrays indexed by tier 0..6:
 // common, uncommon, rare, epic, legendary, mythic, divine).
 
-import { RARITIES, type Rarity } from '@/lib/rarity';
+import { RARITIES, rarityHex, type Rarity } from '@/lib/rarity';
 
 export const RARITY_ORDER = RARITIES;
 
-export const RARITY_COLOR: Record<Rarity, string> = {
-  common: '#9ca3af',
-  uncommon: '#4ade80',
-  rare: '#60a5fa',
-  epic: '#c084fc',
-  legendary: '#fb923c',
-  mythic: '#ef4444',
-  divine: '#ffd24d',
-};
+/**
+ * Rarity colour for every renderer surface — model tint, motes, point lights,
+ * aura. Derived from the canonical table rather than restated: this used to be
+ * its own palette, so a legendary component was gold on the model and orange
+ * everywhere the UI mentioned it.
+ */
+export const RARITY_COLOR: Record<Rarity, string> = Object.fromEntries(
+  RARITIES.map((rarity) => [rarity, rarityHex(rarity)])
+) as Record<Rarity, string>;
 
 export const ACCENT_COLOR: Record<Rarity, string> = {
   common: '#6b7280',

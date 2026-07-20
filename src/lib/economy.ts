@@ -183,7 +183,7 @@ export const SHARE_CAP = 0.3; // no user captures more than 30% of emission
  * the allocation that actually has to exist.
  */
 export const EMISSION_RESERVE_PCT = Number(
-  process.env.NEXT_PUBLIC_OSR_EMISSION_RESERVE_PCT ?? 0.1
+  process.env.NEXT_PUBLIC_OSR_EMISSION_RESERVE_PCT ?? 0.05
 );
 
 /** OSR set aside at genesis to fund every reward the protocol will ever pay. */

@@ -13,7 +13,8 @@ import {
   type StepHandler,
 } from '@/lib/api-client';
 import { useWalletStore } from '@/lib/store';
-import { COMPONENT_RARITIES, NODE_SLOTS, SLOT_LABELS, type Rarity } from '@/lib/rarity';
+import { COMPONENT_RARITIES, NODE_SLOTS, SLOT_LABELS, rarityHex, type Rarity } from '@/lib/rarity';
+import { auraHex, auraLabel } from '@/lib/aura';
 import { RARITY_MULT, getCrateCost, WELCOME_BOOST_WINDOW_S } from '@/lib/economy';
 import { SHOWROOM_NODES, type LightingPreset } from '@/components/three/Compound';
 import type { RigNodeData } from '@/components/three/NodeRig';
@@ -337,8 +338,18 @@ export default function CommandPage() {
                 }`}
               >
                 <span className="text-base">{n.type === 'oil' ? '⛽' : '⛏'}</span>
+                {/* Same colour as this node's ring in the 3D scene, so cycling
+                    the list maps onto what is on screen without guessing. */}
+                <span
+                  aria-hidden
+                  className="h-2 w-2 shrink-0 rounded-full"
+                  style={{ background: auraHex(n.level), boxShadow: `0 0 5px ${auraHex(n.level)}99` }}
+                />
                 <span className="font-semibold text-steel-200">
                   {n.type === 'oil' ? 'Oil Rig' : 'Mining Shaft'} · L{n.level}
+                </span>
+                <span className="font-mono text-[10px] uppercase" style={{ color: auraHex(n.level) }}>
+                  {auraLabel(n.level)}
                 </span>
                 <span className="ml-auto font-mono text-amber-400">{fmt(n.pendingOsr)} OSR</span>
               </button>
@@ -384,6 +395,57 @@ export default function CommandPage() {
             setCameraFocusId(id || null);
           }}
         />
+        {/* Focused-rig readout. Cycling used to name the family and nothing
+            else, so the fine detail — level, aura tier, which components are
+            fitted and at what rarity — was only reachable by leaving the scene.
+            The aura swatch here is the same colour as the ring drawn under the
+            rig, which is what makes the ring legible as a rank. */}
+        {focusedRig && (
+          <div className="pointer-events-none absolute bottom-20 left-1/2 z-10 w-[min(92vw,420px)] -translate-x-1/2 rounded-lg border border-ink-500/80 bg-ink-900/92 px-3 py-2.5 shadow-2xl backdrop-blur">
+            <div className="flex items-center gap-2">
+              <span
+                aria-hidden
+                className="h-2.5 w-2.5 shrink-0 rounded-full"
+                style={{
+                  background: auraHex(focusedRig.level),
+                  boxShadow: `0 0 7px ${auraHex(focusedRig.level)}aa`,
+                }}
+              />
+              <span className="font-mono text-[11px] font-bold uppercase tracking-widest text-steel-100">
+                {focusedRig.type === 'oil' ? 'Oil Rig' : 'Mining Shaft'} · L{focusedRig.level}
+              </span>
+              <span
+                className="font-mono text-[10px] font-bold uppercase"
+                style={{ color: auraHex(focusedRig.level) }}
+              >
+                {auraLabel(focusedRig.level)}
+              </span>
+              {focusedRig.id.startsWith('showroom-') && (
+                <span className="ml-auto font-mono text-[9px] uppercase tracking-widest text-steel-500">
+                  Preview
+                </span>
+              )}
+            </div>
+            <div className="mt-2 grid grid-cols-2 gap-x-3 gap-y-1">
+              {NODE_SLOTS[focusedRig.type === 'oil' ? 'oil' : 'mine'].map((slot) => {
+                const fitted = focusedRig.components.find((c) => c.slot === slot);
+                const rarity = (fitted?.rarity ?? null) as Rarity | null;
+                return (
+                  <div key={slot} className="flex items-baseline gap-1.5 text-[10px]">
+                    <span className="text-steel-500">{SLOT_GLYPH[slot]}</span>
+                    <span className="truncate text-steel-400">{SLOT_LABELS[slot]}</span>
+                    <span
+                      className="ml-auto shrink-0 font-mono font-bold uppercase"
+                      style={{ color: rarity ? rarityHex(rarity) : '#5b5b5b' }}
+                    >
+                      {rarity ? COMPONENT_RARITIES[rarity].label : '—'}
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
         <div className="absolute bottom-4 left-1/2 z-10 flex -translate-x-1/2 items-center gap-1 rounded-full border border-ink-500/80 bg-ink-900/90 p-1 shadow-2xl backdrop-blur">
           <button
             className="rounded-full px-3 py-2 font-mono text-lg text-steel-200 transition hover:bg-amber-500/20 hover:text-amber-300"
@@ -398,9 +460,7 @@ export default function CommandPage() {
             onClick={() => setCameraFocusId(null)}
             title="Return to compound overview"
           >
-            {focusedRig
-              ? `${focusedRig.type === 'oil' ? 'Oil Rig' : 'Mining Shaft'}${focusedRig.id.startsWith('showroom-') ? ' · Preview' : ''}`
-              : 'Compound Overview'}
+            {focusedRig ? 'Back to Compound' : 'Compound Overview'}
           </button>
           <button
             className="rounded-full px-3 py-2 font-mono text-lg text-steel-200 transition hover:bg-amber-500/20 hover:text-amber-300"
@@ -578,6 +638,27 @@ function NodeDetail({
         </div>
         <span className="font-mono text-[11px] text-amber-400">
           {node.componentMultiplier.toFixed(2)}× GP
+        </span>
+      </div>
+
+      {/* Names the aura tier and shows its colour, which is the same colour as
+          the ring drawn under this rig in the 3D scene — so the ring is
+          readable as a rank instead of being unexplained decoration. */}
+      <div className="mb-2 flex items-center gap-1.5 text-[11px]">
+        <span
+          aria-hidden
+          className="h-2.5 w-2.5 shrink-0 rounded-full"
+          style={{
+            background: auraHex(node.level),
+            boxShadow: `0 0 6px ${auraHex(node.level)}99`,
+          }}
+        />
+        <span className="text-steel-400">Aura</span>
+        <span className="font-mono font-bold uppercase" style={{ color: auraHex(node.level) }}>
+          {auraLabel(node.level)}
+        </span>
+        <span className="ml-auto font-mono text-steel-500">
+          {fmt(node.productionRate)} OSR/s
         </span>
       </div>
 
