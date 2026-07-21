@@ -213,8 +213,19 @@ export async function settleSpend<T>(
     throw new GameError('quote expired — request a fresh one', 409);
   }
 
-  const receipt = await publicClient().getTransactionReceipt({ hash: txHash as Hex });
-  if (!receipt) throw new GameError('transaction not found', 404);
+  // viem THROWS TransactionReceiptNotFoundError when the tx is not yet visible
+  // to this RPC node. The client already waited for the receipt before calling
+  // settle, so this is propagation lag between RPC nodes, not a real failure —
+  // make it the same retryable 425 as the confirmations path, or the client
+  // (which only retries on "awaiting confirmations") gives up and the operator
+  // is charged on-chain for an action that never applied.
+  let receipt: Awaited<ReturnType<ReturnType<typeof publicClient>['getTransactionReceipt']>> | null;
+  try {
+    receipt = await publicClient().getTransactionReceipt({ hash: txHash as Hex });
+  } catch {
+    throw new GameError('awaiting confirmations (receipt not yet visible)', 425);
+  }
+  if (!receipt) throw new GameError('awaiting confirmations (receipt not yet visible)', 425);
   if (receipt.status !== 'success') throw new GameError('transaction reverted on-chain', 400);
 
   const head = await publicClient().getBlockNumber();
